@@ -1,0 +1,146 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String      @id @default(cuid())
+  username      String      @unique
+  password      String      @db.Text
+  name          String?
+  logoUrl       String?     @db.Text
+  role              Role        @default(ADMIN)
+  isFirstLogin      Boolean     @default(false)
+  mustChangePassword Boolean     @default(false)
+  subscriptionAmount Int         @default(999)
+  
+  parentId          String?
+  parent            User?       @relation("SubUsers", fields: [parentId], references: [id])
+  subUsers          User[]      @relation("SubUsers")
+
+  links             ShortLink[] @relation("CreatedLinks")
+  assignedLinks     ShortLink[] @relation("AssignedLinks")
+  subscriptions     Subscription[]
+  
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([parentId], name: "idx_user_parentId")
+  @@index([role], name: "idx_user_role")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  SUB_USER
+}
+
+model ShortLink {
+  id                String          @id @default(cuid())
+  slug              String          @unique
+  title             String
+  welcomeMessage    String?         @default("Hello! How can I help you today?")
+  whatsappLink      String?
+  whatsappThreshold Int             @default(5)
+  creator           User            @relation("CreatedLinks", fields: [creatorId], references: [id])
+  creatorId         String
+  assignedUsers     User[]          @relation("AssignedLinks")
+  conversations     Conversation[]
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([creatorId], name: "idx_shortlink_creatorId")
+}
+
+model Conversation {
+  id            String    @id @default(cuid())
+  visitorToken  String    // A unique token for the visitor session
+  visitorName   String?
+  visitorPhone  String?
+  link          ShortLink @relation(fields: [linkId], references: [id])
+  linkId        String
+  messages      Message[]
+  waRedirected  Boolean   @default(false)
+  lastMessageAt DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+
+  @@index([linkId], name: "idx_conversation_linkId")
+  @@index([lastMessageAt], name: "idx_conversation_lastMessageAt")
+  @@index([linkId, visitorToken], name: "idx_conversation_linkId_visitorToken")
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  conversationId String
+  content        String       @db.Text
+  type           MessageType  @default(TEXT)
+  isFromAdmin    Boolean      @default(false)
+  isRead         Boolean      @default(false)
+  linkPreview    Json?        // { title, description, image, url }
+  replyToId      String?
+  replyTo        Message?     @relation("ReplyTo", fields: [replyToId], references: [id])
+  replies        Message[]    @relation("ReplyTo")
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId], name: "idx_message_conversationId")
+  @@index([createdAt], name: "idx_message_createdAt")
+  @@index([conversationId, isRead, isFromAdmin], name: "idx_message_conversationId_isRead_isFromAdmin")
+  @@index([replyToId], name: "idx_message_replyToId")
+}
+
+enum MessageType {
+  TEXT
+  AUDIO
+}
+
+model Subscription {
+  id          String             @id @default(cuid())
+  user        User               @relation(fields: [userId], references: [id])
+  userId      String
+  startDate   DateTime
+  endDate     DateTime
+  amount      Int
+  status      SubscriptionStatus @default(ACTIVE)
+  payment     Payment?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([userId], name: "idx_subscription_userId")
+  @@index([status], name: "idx_subscription_status")
+  @@index([endDate], name: "idx_subscription_endDate")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  OVERDUE
+  EXPIRED
+}
+
+model Payment {
+  id                 String        @id @default(cuid())
+  subscription       Subscription  @relation(fields: [subscriptionId], references: [id])
+  subscriptionId     String        @unique
+  amount             Int
+  razorpayOrderId    String?       @unique
+  razorpayPaymentId  String?       @unique
+  status             PaymentStatus @default(PENDING)
+  paidAt             DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@index([status], name: "idx_payment_status")
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}

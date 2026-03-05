@@ -1,0 +1,96 @@
+import { Response } from 'express';
+import { prisma } from '../lib/prisma';
+import { decryptMessage } from '../lib/encryption';
+import { AuthRequest } from '../middleware/auth';
+import { Role, MessageType } from '../enums';
+
+export const getConversations = async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.user?.userId;
+        if (!userId) {
+            return res.status(401).json({ error: 'Unauthorized: User ID missing' });
+        }
+
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            include: { assignedLinks: { select: { id: true } } }
+        });
+
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const page = Math.max(1, parseInt(req.query.page as string) || 1);
+        const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 20));
+        const skip = (page - 1) * limit;
+
+        const whereClause = user.role === Role.SUB_USER
+            ? { linkId: { in: user.assignedLinks.map(l => l.id) } }
+            : { link: { creatorId: userId } };
+
+        const [conversations, total] = await Promise.all([
+            prisma.conversation.findMany({
+                where: whereClause,
+                include: {
+                    link: {
+                        select: {
+                            title: true,
+                            slug: true
+                        }
+                    },
+                    messages: {
+                        orderBy: { createdAt: 'desc' }
+                    }
+                },
+                orderBy: { lastMessageAt: 'desc' },
+                skip,
+                take: limit
+            }),
+            prisma.conversation.count({ where: whereClause })
+        ]);
+
+        // Use any cast to bypass stale/lagging generated types in the environment
+        const data = (conversations as any[]).map(c => {
+            const lastMsg = c.messages?.[0];
+            const visitorMessages = (c.messages || []).filter((m: any) => !m.isFromAdmin);
+            const unreadCount = visitorMessages.filter((m: any) => !m.isRead).length;
+
+            let lastMessage = 'No messages yet';
+            let lastMessageType = MessageType.TEXT;
+
+            if (lastMsg) {
+                lastMessageType = lastMsg.type || MessageType.TEXT;
+                if (lastMsg.type === MessageType.AUDIO) {
+                    lastMessage = '🎵 Audio Message';
+                } else {
+                    lastMessage = decryptMessage(lastMsg.content);
+                }
+            }
+
+            return {
+                id: c.id,
+                linkId: c.linkId,
+                linkTitle: c.link?.title || 'Unknown Link',
+                linkSlug: c.link?.slug || '',
+                visitorToken: (c.visitorToken || '').substring(0, 8),
+                visitorName: c.visitorName || 'Anonymous',
+                visitorPhone: c.visitorPhone || 'N/A',
+                lastMessage,
+                lastMessageType,
+                lastMessageAt: c.lastMessageAt,
+                unreadCount
+            };
+        });
+
+        res.json({
+            data,
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit)
+        });
+    } catch (e) {
+        console.error('[getConversations Error]:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+}
