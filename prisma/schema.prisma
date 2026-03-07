@@ -11,29 +11,79 @@ datasource db {
 }
 
 model User {
-  id            String      @id @default(cuid())
-  username      String      @unique
-  password      String      @db.Text
-  name          String?
-  logoUrl       String?     @db.Text
-  role              Role        @default(ADMIN)
-  isFirstLogin      Boolean     @default(false)
-  mustChangePassword Boolean     @default(false)
-  subscriptionAmount Int         @default(999)
-  
-  parentId          String?
-  parent            User?       @relation("SubUsers", fields: [parentId], references: [id])
-  subUsers          User[]      @relation("SubUsers")
+  id                 String  @id @default(cuid())
+  username           String  @unique
+  password           String  @db.Text
+  name               String?
+  logoUrl            String? @db.Text
+  role               Role    @default(ADMIN)
+  isFirstLogin       Boolean @default(false)
+  mustChangePassword Boolean @default(false)
+  subscriptionAmount Int
 
-  links             ShortLink[] @relation("CreatedLinks")
-  assignedLinks     ShortLink[] @relation("AssignedLinks")
-  subscriptions     Subscription[]
-  
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
+  planId        String?
+  plan          Plan?        @relation(fields: [planId], references: [id])
+  billingCycle  BillingCycle @default(MONTHLY)
+  subUsersLimit Int?         @default(3)
+  linksLimit    Int?         @default(5)
+
+  parentId String?
+  parent   User?   @relation("SubUsers", fields: [parentId], references: [id])
+  subUsers User[]  @relation("SubUsers")
+
+  links           ShortLink[]          @relation("CreatedLinks")
+  assignedLinks   ShortLink[]          @relation("AssignedLinks")
+  subscriptions   Subscription[]
+  upgradeRequests PlanUpgradeRequest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([parentId], name: "idx_user_parentId")
   @@index([role], name: "idx_user_role")
+  @@index([planId], name: "idx_user_planId")
+}
+
+model Plan {
+  id              String               @id @default(cuid())
+  name            String               @unique
+  monthlyPrice    Int                  @default(0)
+  yearlyPrice     Int                  @default(0)
+  order           Int                  @default(0)
+  subUsersLimit   Int                  @default(3)
+  linksLimit      Int                  @default(5)
+  description     String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  users           User[]
+  upgradeRequests PlanUpgradeRequest[]
+}
+
+model PlanUpgradeRequest {
+  id           String               @id @default(cuid())
+  user         User                 @relation(fields: [userId], references: [id])
+  userId       String
+  plan         Plan?                @relation(fields: [planId], references: [id])
+  planId       String?
+  billingCycle BillingCycle         @default(MONTHLY)
+  status       UpgradeRequestStatus @default(PENDING)
+  message      String?              @db.Text
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+enum UpgradeRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
 }
 
 enum Role {
@@ -43,25 +93,25 @@ enum Role {
 }
 
 model ShortLink {
-  id                String          @id @default(cuid())
-  slug              String          @unique
+  id                String         @id @default(cuid())
+  slug              String         @unique
   title             String
-  welcomeMessage    String?         @default("Hello! How can I help you today?")
+  welcomeMessage    String?        @default("Hello! How can I help you today?")
   whatsappLink      String?
-  whatsappThreshold Int             @default(5)
-  creator           User            @relation("CreatedLinks", fields: [creatorId], references: [id])
+  whatsappThreshold Int            @default(5)
+  creator           User           @relation("CreatedLinks", fields: [creatorId], references: [id])
   creatorId         String
-  assignedUsers     User[]          @relation("AssignedLinks")
+  assignedUsers     User[]         @relation("AssignedLinks")
   conversations     Conversation[]
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
 
   @@index([creatorId], name: "idx_shortlink_creatorId")
 }
 
 model Conversation {
   id            String    @id @default(cuid())
-  visitorToken  String    // A unique token for the visitor session
+  visitorToken  String // A unique token for the visitor session
   visitorName   String?
   visitorPhone  String?
   link          ShortLink @relation(fields: [linkId], references: [id])
@@ -84,7 +134,7 @@ model Message {
   type           MessageType  @default(TEXT)
   isFromAdmin    Boolean      @default(false)
   isRead         Boolean      @default(false)
-  linkPreview    Json?        // { title, description, image, url }
+  linkPreview    Json? // { title, description, image, url }
   replyToId      String?
   replyTo        Message?     @relation("ReplyTo", fields: [replyToId], references: [id])
   replies        Message[]    @relation("ReplyTo")
@@ -102,16 +152,16 @@ enum MessageType {
 }
 
 model Subscription {
-  id          String             @id @default(cuid())
-  user        User               @relation(fields: [userId], references: [id])
-  userId      String
-  startDate   DateTime
-  endDate     DateTime
-  amount      Int
-  status      SubscriptionStatus @default(ACTIVE)
-  payment     Payment?
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  id        String             @id @default(cuid())
+  user      User               @relation(fields: [userId], references: [id])
+  userId    String
+  startDate DateTime
+  endDate   DateTime
+  amount    Int
+  status    SubscriptionStatus @default(ACTIVE)
+  payment   Payment?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
 
   @@index([userId], name: "idx_subscription_userId")
   @@index([status], name: "idx_subscription_status")
@@ -125,16 +175,16 @@ enum SubscriptionStatus {
 }
 
 model Payment {
-  id                 String        @id @default(cuid())
-  subscription       Subscription  @relation(fields: [subscriptionId], references: [id])
-  subscriptionId     String        @unique
-  amount             Int
-  razorpayOrderId    String?       @unique
-  razorpayPaymentId  String?       @unique
-  status             PaymentStatus @default(PENDING)
-  paidAt             DateTime?
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  id                String        @id @default(cuid())
+  subscription      Subscription  @relation(fields: [subscriptionId], references: [id])
+  subscriptionId    String        @unique
+  amount            Int
+  razorpayOrderId   String?       @unique
+  razorpayPaymentId String?       @unique
+  status            PaymentStatus @default(PENDING)
+  paidAt            DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
   @@index([status], name: "idx_payment_status")
 }

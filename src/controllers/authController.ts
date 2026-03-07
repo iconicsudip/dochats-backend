@@ -1,19 +1,54 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { Role } from '../enums';
 import { hashPassword, comparePassword, generateToken } from '../utils/auth';
+import { prisma } from '../lib/prisma';
+import { AuthRequest } from '../middleware/auth';
 
-const prisma = new PrismaClient();
+/**
+ * Helper to format user response consistently
+ */
+const formatUserResponse = (user: any) => {
+    const isSuperAdmin = user.role === Role.SUPER_ADMIN;
+
+    return {
+        id: user.id,
+        username: user.username,
+        name: user.name,
+        logoUrl: user.logoUrl,
+        role: user.role,
+        isFirstLogin: user.isFirstLogin,
+        mustChangePassword: user.mustChangePassword,
+        assignedLinks: user.assignedLinks,
+        createdAt: user.createdAt,
+        // Only include plan-related info for non-super-admins
+        ...(!isSuperAdmin && {
+            plan: user.plan,
+            subUsersLimit: user.subUsersLimit,
+            linksLimit: user.linksLimit,
+            upgradeRequests: user.upgradeRequests
+        })
+    };
+};
 
 export const login = async (req: Request, res: Response) => {
     try {
         const { username, password } = req.body;
-        if (!username || !password) return res.status(400).json({ error: 'Missing data' });
+        if (!username || !password) {
+            return res.status(400).json({ error: 'Username and password are required' });
+        }
 
         const user = await prisma.user.findUnique({
             where: { username },
-            include: { assignedLinks: { select: { id: true, title: true } } }
+            include: {
+                assignedLinks: { select: { id: true, title: true } },
+                plan: true,
+                upgradeRequests: {
+                    where: { status: 'PENDING' },
+                    select: { planId: true, status: true }
+                }
+            }
         });
+
         if (!user || !(await comparePassword(password, user.password))) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
@@ -21,36 +56,41 @@ export const login = async (req: Request, res: Response) => {
         const token = generateToken(user.id);
         res.status(200).json({
             token,
-            user: {
-                id: user.id,
-                username: user.username,
-                name: (user as any).name,
-                logoUrl: (user as any).logoUrl,
-                role: user.role,
-                isFirstLogin: (user as any).isFirstLogin,
-                mustChangePassword: (user as any).mustChangePassword,
-                assignedLinks: (user as any).assignedLinks,
-                createdAt: user.createdAt
-            }
+            user: formatUserResponse(user)
         });
     } catch (e) {
+        console.error('Login error:', e);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
 
-export const getMe = async (req: any, res: Response) => {
+export const getMe = async (req: AuthRequest, res: Response) => {
     try {
+        if (!req.user?.userId) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
         const user = await prisma.user.findUnique({
             where: { id: req.user.userId },
-            include: { assignedLinks: { select: { id: true, title: true } } }
+            include: {
+                assignedLinks: { select: { id: true, title: true } },
+                plan: true,
+                upgradeRequests: {
+                    where: { status: 'PENDING' },
+                    select: { planId: true, status: true }
+                }
+            }
         });
-        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
 
         let subscriptionInfo: any = null;
 
         // Include subscription info for ADMIN users
         if (user.role === Role.ADMIN) {
-            const latestSub = await (prisma as any).subscription.findFirst({
+            const latestSub = await prisma.subscription.findFirst({
                 where: { userId: user.id },
                 orderBy: { endDate: 'desc' },
                 include: { payment: true }
@@ -81,60 +121,60 @@ export const getMe = async (req: any, res: Response) => {
         }
 
         res.json({
-            id: user.id,
-            username: user.username,
-            name: (user as any).name,
-            logoUrl: (user as any).logoUrl,
-            role: user.role,
-            isFirstLogin: (user as any).isFirstLogin,
-            mustChangePassword: (user as any).mustChangePassword,
-            assignedLinks: (user as any).assignedLinks,
-            createdAt: user.createdAt,
+            ...formatUserResponse(user),
             subscription: subscriptionInfo
         });
     } catch (e) {
+        console.error('getMe error:', e);
         res.status(500).json({ error: 'Internal server error' });
     }
-}
+};
 
-export const changePassword = async (req: any, res: Response) => {
+export const changePassword = async (req: AuthRequest, res: Response) => {
     try {
         const { newPassword } = req.body;
-        if (!newPassword || newPassword.length < 6) return res.status(400).json({ error: 'Invalid password' });
+        if (!newPassword || newPassword.length < 6) {
+            return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+        }
 
         const hashedPassword = await hashPassword(newPassword);
         await prisma.user.update({
-            where: { id: req.user.userId },
-            data: { password: hashedPassword, isFirstLogin: false, mustChangePassword: false } as any
+            where: { id: req.user!.userId },
+            data: {
+                password: hashedPassword,
+                isFirstLogin: false,
+                mustChangePassword: false
+            }
         });
         res.status(200).json({ message: 'Password updated successfully' });
     } catch (e) {
+        console.error('changePassword error:', e);
         res.status(500).json({ error: 'Internal server error' });
     }
-}
+};
 
-export const getSubUsers = async (req: any, res: Response) => {
+export const getSubUsers = async (req: AuthRequest, res: Response) => {
     try {
-        const page = Math.max(1, parseInt(req.query.page) || 1);
-        const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+        const page = Math.max(1, parseInt(req.query.page as string) || 1);
+        const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 20));
         const skip = (page - 1) * limit;
 
         const [subUsers, total] = await Promise.all([
             prisma.user.findMany({
-                where: { parentId: req.user.userId },
+                where: { parentId: req.user!.userId },
                 include: { assignedLinks: { select: { id: true, title: true } } },
                 orderBy: { createdAt: 'desc' },
                 skip,
                 take: limit
             }),
-            prisma.user.count({ where: { parentId: req.user.userId } })
+            prisma.user.count({ where: { parentId: req.user!.userId } })
         ]);
 
         const formatted = subUsers.map(u => ({
             id: u.id,
             username: u.username,
-            name: (u as any).name,
-            logoUrl: (u as any).logoUrl,
+            name: u.name,
+            logoUrl: u.logoUrl,
             assignedLinks: u.assignedLinks
         }));
 
@@ -146,23 +186,49 @@ export const getSubUsers = async (req: any, res: Response) => {
             totalPages: Math.ceil(total / limit)
         });
     } catch (e) {
+        console.error('getSubUsers error:', e);
         res.status(500).json({ error: 'Internal server error' });
     }
-}
+};
 
-export const createSubUser = async (req: any, res: Response) => {
+export const createSubUser = async (req: AuthRequest, res: Response) => {
     try {
         const { username, password, assignedLinkIds } = req.body;
-        if (!username || !password) return res.status(400).json({ error: 'Missing data' });
+        if (!username || !password) {
+            return res.status(400).json({ error: 'Username and password are required' });
+        }
 
-        const currentUser = await prisma.user.findUnique({ where: { id: req.user.userId } });
-        if (currentUser?.role === Role.SUB_USER) return res.status(403).json({ error: 'Not allowed' });
+        const currentUser = await prisma.user.findUnique({
+            where: { id: req.user!.userId },
+            include: { subUsers: true }
+        });
+
+        if (!currentUser) {
+            return res.status(404).json({ error: 'Current user not found' });
+        }
+
+        if (currentUser.role === Role.SUB_USER) {
+            return res.status(403).json({ error: 'Sub-users cannot create other sub-users' });
+        }
+
+        // Check sub-users limit
+        const subUsersLimit = currentUser.subUsersLimit || 3;
+        if (currentUser.subUsers.length >= subUsersLimit) {
+            return res.status(400).json({
+                error: `You have reached your sub-users limit (${subUsersLimit}). Please upgrade your plan.`
+            });
+        }
 
         const existing = await prisma.user.findUnique({ where: { username } });
-        if (existing) return res.status(400).json({ error: 'Username taken' });
+        if (existing) {
+            return res.status(400).json({ error: 'Username is already taken' });
+        }
 
         const validLinks = await prisma.shortLink.findMany({
-            where: { id: { in: assignedLinkIds || [] }, creatorId: req.user.userId }
+            where: {
+                id: { in: assignedLinkIds || [] },
+                creatorId: req.user!.userId
+            }
         });
 
         const hashedPassword = await hashPassword(password);
@@ -172,10 +238,11 @@ export const createSubUser = async (req: any, res: Response) => {
                 password: hashedPassword,
                 role: Role.SUB_USER,
                 isFirstLogin: true,
-                parentId: req.user.userId,
+                parentId: req.user!.userId,
                 assignedLinks: {
                     connect: validLinks.map(l => ({ id: l.id }))
-                }
+                },
+                subscriptionAmount: 0 // Sub-users don't pay subscription
             },
             include: { assignedLinks: { select: { id: true, title: true } } }
         });
@@ -186,22 +253,26 @@ export const createSubUser = async (req: any, res: Response) => {
             assignedLinks: user.assignedLinks
         });
     } catch (e) {
-        console.error(e);
+        console.error('createSubUser error:', e);
         res.status(500).json({ error: 'Internal server error' });
     }
-}
+};
 
-export const deleteSubUser = async (req: any, res: Response) => {
+export const deleteSubUser = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
 
-        const currentUser = await prisma.user.findUnique({ where: { id: req.user.userId } });
-        if (currentUser?.role === Role.SUB_USER) return res.status(403).json({ error: 'Not allowed' });
+        const currentUser = await prisma.user.findUnique({ where: { id: req.user!.userId } });
+        if (!currentUser || currentUser.role === Role.SUB_USER) {
+            return res.status(403).json({ error: 'Not allowed' });
+        }
 
         const subUser = await prisma.user.findFirst({
-            where: { id, parentId: req.user.userId }
+            where: { id, parentId: req.user!.userId }
         });
-        if (!subUser) return res.status(404).json({ error: 'Sub-user not found' });
+        if (!subUser) {
+            return res.status(404).json({ error: 'Sub-user not found' });
+        }
 
         await prisma.user.delete({
             where: { id }
@@ -209,23 +280,27 @@ export const deleteSubUser = async (req: any, res: Response) => {
 
         res.json({ message: 'Sub-user deleted successfully' });
     } catch (e) {
-        console.error(e);
+        console.error('deleteSubUser error:', e);
         res.status(500).json({ error: 'Internal server error' });
     }
-}
+};
 
-export const updateSubUser = async (req: any, res: Response) => {
+export const updateSubUser = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
         const { password, assignedLinkIds } = req.body;
 
-        const currentUser = await prisma.user.findUnique({ where: { id: req.user.userId } });
-        if (currentUser?.role === Role.SUB_USER) return res.status(403).json({ error: 'Not allowed' });
+        const currentUser = await prisma.user.findUnique({ where: { id: req.user!.userId } });
+        if (!currentUser || currentUser.role === Role.SUB_USER) {
+            return res.status(403).json({ error: 'Not allowed' });
+        }
 
         const subUser = await prisma.user.findFirst({
-            where: { id, parentId: req.user.userId }
+            where: { id, parentId: req.user!.userId }
         });
-        if (!subUser) return res.status(404).json({ error: 'Sub-user not found' });
+        if (!subUser) {
+            return res.status(404).json({ error: 'Sub-user not found' });
+        }
 
         const updateData: any = {};
         if (password) {
@@ -234,7 +309,10 @@ export const updateSubUser = async (req: any, res: Response) => {
 
         if (assignedLinkIds) {
             const validLinks = await prisma.shortLink.findMany({
-                where: { id: { in: assignedLinkIds }, creatorId: req.user.userId }
+                where: {
+                    id: { in: assignedLinkIds },
+                    creatorId: req.user!.userId
+                }
             });
             updateData.assignedLinks = {
                 set: [], // Clear all current associations
@@ -254,12 +332,12 @@ export const updateSubUser = async (req: any, res: Response) => {
             assignedLinks: updatedUser.assignedLinks
         });
     } catch (e) {
-        console.error(e);
+        console.error('updateSubUser error:', e);
         res.status(500).json({ error: 'Internal server error' });
     }
-}
+};
 
-export const updateMe = async (req: any, res: Response) => {
+export const updateMe = async (req: AuthRequest, res: Response) => {
     try {
         const { name, logoUrl, password } = req.body;
         const updateData: any = {};
@@ -272,20 +350,21 @@ export const updateMe = async (req: any, res: Response) => {
         }
 
         const user = await prisma.user.update({
-            where: { id: req.user.userId },
+            where: { id: req.user!.userId },
             data: updateData
         });
 
         res.json({
             id: user.id,
             username: user.username,
-            name: (user as any).name,
-            logoUrl: (user as any).logoUrl,
+            name: user.name,
+            logoUrl: user.logoUrl,
             role: user.role,
             createdAt: user.createdAt
         });
     } catch (e) {
-        console.error(e);
+        console.error('updateMe error:', e);
         res.status(500).json({ error: 'Internal server error' });
     }
-}
+};
+

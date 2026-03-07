@@ -6,7 +6,8 @@ import {
     createPaymentOrder,
     verifyPayment,
     getAllPayments,
-    setSubscriptionAmount
+    setSubscriptionAmount,
+    requestPlanUpgrade
 } from '../controllers/billingController';
 
 const router = Router();
@@ -16,6 +17,7 @@ router.get('/status', authenticate, getSubscriptionStatus);
 router.get('/history', authenticate, getPaymentHistory);
 router.post('/create-order', authenticate, createPaymentOrder);
 router.post('/verify-payment', authenticate, verifyPayment);
+router.post('/request-upgrade', authenticate, requestPlanUpgrade);
 
 // Super Admin endpoints
 router.get('/all-payments', authenticate, getAllPayments);

@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { Role } from '../enums';
 import crypto from 'crypto';
+import { AuthRequest } from '../middleware/auth';
 
 // Initialize Razorpay
 const Razorpay = require('razorpay');
@@ -13,16 +14,18 @@ const getRazorpay = () => {
     });
 };
 
+const getExtensionDays = (billingCycle: string | null) => {
+    return billingCycle === 'YEARLY' ? 365 : 30;
+};
+
 // ==================== ADMIN ENDPOINTS ====================
 
 /**
  * Get current subscription status for the logged-in admin
  */
-export const getSubscriptionStatus = async (req: any, res: Response) => {
+export const getSubscriptionStatus = async (req: AuthRequest, res: Response) => {
     try {
-        const userId = req.user.userId;
-
-        const defaultAmount = Number(process.env.DEFAULT_SUBSCRIPTION_AMOUNT) || 999;
+        const userId = req.user!.userId;
 
         const [subscription, user] = await Promise.all([
             prisma.subscription.findFirst({
@@ -33,13 +36,11 @@ export const getSubscriptionStatus = async (req: any, res: Response) => {
             prisma.user.findUnique({ where: { id: userId } })
         ]);
 
-        const currentAmount = (user as any)?.subscriptionAmount || defaultAmount;
-
         if (!subscription) {
             return res.json({
                 hasSubscription: false,
                 status: 'NO_SUBSCRIPTION',
-                defaultAmount: currentAmount
+                defaultAmount: user?.subscriptionAmount || 0
             });
         }
 
@@ -58,6 +59,7 @@ export const getSubscriptionStatus = async (req: any, res: Response) => {
 
         res.json({
             hasSubscription: true,
+            billingCycle: user?.billingCycle,
             subscription: {
                 id: subscription.id,
                 startDate: subscription.startDate,
@@ -75,7 +77,7 @@ export const getSubscriptionStatus = async (req: any, res: Response) => {
             }
         });
     } catch (e) {
-        console.error(e);
+        console.error('getSubscriptionStatus error:', e);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -83,11 +85,11 @@ export const getSubscriptionStatus = async (req: any, res: Response) => {
 /**
  * Get payment history for the logged-in admin
  */
-export const getPaymentHistory = async (req: any, res: Response) => {
+export const getPaymentHistory = async (req: AuthRequest, res: Response) => {
     try {
-        const userId = req.user.userId;
-        const page = Math.max(1, parseInt(req.query.page) || 1);
-        const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+        const userId = req.user!.userId;
+        const page = Math.max(1, parseInt(req.query.page as string) || 1);
+        const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 20));
         const skip = (page - 1) * limit;
 
         const [subscriptions, total] = await Promise.all([
@@ -123,7 +125,7 @@ export const getPaymentHistory = async (req: any, res: Response) => {
             totalPages: Math.ceil(total / limit)
         });
     } catch (e) {
-        console.error(e);
+        console.error('getPaymentHistory error:', e);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -131,16 +133,19 @@ export const getPaymentHistory = async (req: any, res: Response) => {
 /**
  * Create a Razorpay order for payment
  */
-export const createPaymentOrder = async (req: any, res: Response) => {
+export const createPaymentOrder = async (req: AuthRequest, res: Response) => {
     try {
-        const userId = req.user.userId;
+        const userId = req.user!.userId;
 
-        // Get user's subscription amount
-        const user = await prisma.user.findUnique({ where: { id: userId } });
+        // Get user's subscription details
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            include: { plan: true }
+        });
         if (!user) return res.status(404).json({ error: 'User not found' });
 
-        const defaultAmount = Number(process.env.DEFAULT_SUBSCRIPTION_AMOUNT) || 999;
-        const amount = (user as any).subscriptionAmount || defaultAmount;
+        const amount = user.subscriptionAmount || 0;
+        const daysToExtend = getExtensionDays(user.billingCycle);
 
         // Find the current/latest subscription
         let currentSub = await prisma.subscription.findFirst({
@@ -156,7 +161,7 @@ export const createPaymentOrder = async (req: any, res: Response) => {
             // Create new subscription period
             const startDate = now;
             const endDate = new Date(now);
-            endDate.setDate(endDate.getDate() + 30);
+            endDate.setDate(endDate.getDate() + daysToExtend);
 
             subscription = await prisma.subscription.create({
                 data: {
@@ -174,7 +179,7 @@ export const createPaymentOrder = async (req: any, res: Response) => {
             // Overdue/expired — create new one from today
             const startDate = now;
             const endDate = new Date(now);
-            endDate.setDate(endDate.getDate() + 30);
+            endDate.setDate(endDate.getDate() + daysToExtend);
 
             subscription = await prisma.subscription.create({
                 data: {
@@ -190,7 +195,7 @@ export const createPaymentOrder = async (req: any, res: Response) => {
         // Create Razorpay order
         const razorpay = getRazorpay();
         const order = await razorpay.orders.create({
-            amount: amount * 100, // Razorpay accepts amount in paise
+            amount: Math.round(amount * 100), // Razorpay accepts amount in paise
             currency: 'INR',
             receipt: `sub_${subscription.id}`,
             notes: {
@@ -228,7 +233,7 @@ export const createPaymentOrder = async (req: any, res: Response) => {
             keyId: process.env.RAZORPAY_KEY_ID
         });
     } catch (e) {
-        console.error(e);
+        console.error('createPaymentOrder error:', e);
         res.status(500).json({ error: 'Failed to create payment order' });
     }
 };
@@ -236,7 +241,7 @@ export const createPaymentOrder = async (req: any, res: Response) => {
 /**
  * Verify Razorpay payment and activate subscription
  */
-export const verifyPayment = async (req: any, res: Response) => {
+export const verifyPayment = async (req: AuthRequest, res: Response) => {
     try {
         const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
 
@@ -258,7 +263,11 @@ export const verifyPayment = async (req: any, res: Response) => {
         // Find payment by order ID
         const payment = await prisma.payment.findUnique({
             where: { razorpayOrderId: razorpay_order_id },
-            include: { subscription: true }
+            include: {
+                subscription: {
+                    include: { user: true }
+                }
+            }
         });
 
         if (!payment) {
@@ -266,24 +275,24 @@ export const verifyPayment = async (req: any, res: Response) => {
         }
 
         const now = new Date();
+        const currentSub = payment.subscription;
+        const user = currentSub.user;
+        const daysToExtend = getExtensionDays(user.billingCycle);
 
         // Calculate new period dates
-        // If paying early, extend from current end date
-        // If paying late (overdue), start from today
-        const currentSub = payment.subscription;
         let newStartDate: Date;
         let newEndDate: Date;
 
         if (currentSub.endDate > now) {
-            // Early payment — period is extended by 30 days from current end date
+            // Early payment — extend from current end date
             newStartDate = currentSub.startDate;
             newEndDate = new Date(currentSub.endDate);
-            newEndDate.setDate(newEndDate.getDate() + 30);
+            newEndDate.setDate(newEndDate.getDate() + daysToExtend);
         } else {
-            // Late/overdue payment — start fresh from today
+            // Late/overdue payment — start from today
             newStartDate = now;
             newEndDate = new Date(now);
-            newEndDate.setDate(newEndDate.getDate() + 30);
+            newEndDate.setDate(newEndDate.getDate() + daysToExtend);
         }
 
         // Update payment as PAID
@@ -296,7 +305,7 @@ export const verifyPayment = async (req: any, res: Response) => {
             }
         });
 
-        // Activate subscription
+        // Activate and update subscription dates
         await prisma.subscription.update({
             where: { id: currentSub.id },
             data: {
@@ -326,7 +335,7 @@ export const verifyPayment = async (req: any, res: Response) => {
             }
         });
     } catch (e) {
-        console.error(e);
+        console.error('verifyPayment error:', e);
         res.status(500).json({ error: 'Payment verification failed' });
     }
 };
@@ -336,9 +345,9 @@ export const verifyPayment = async (req: any, res: Response) => {
 /**
  * Get all payments across all admins (Super Admin only)
  */
-export const getAllPayments = async (req: any, res: Response) => {
+export const getAllPayments = async (req: AuthRequest, res: Response) => {
     try {
-        if (req.user.role !== Role.SUPER_ADMIN) {
+        if (req.user!.role !== Role.SUPER_ADMIN) {
             return res.status(403).json({ error: 'Forbidden' });
         }
 
@@ -401,7 +410,7 @@ export const getAllPayments = async (req: any, res: Response) => {
             } : null
         }));
 
-        // Summary stats — computed from all records, not just current page
+        // Summary stats — computed from all records
         const allSubs = await prisma.subscription.findMany({
             include: { payment: true }
         }) as any[];
@@ -430,7 +439,7 @@ export const getAllPayments = async (req: any, res: Response) => {
             }
         });
     } catch (e) {
-        console.error(e);
+        console.error('getAllPayments error:', e);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -438,23 +447,87 @@ export const getAllPayments = async (req: any, res: Response) => {
 /**
  * Set subscription amount for an admin (Super Admin only)
  */
-export const setSubscriptionAmount = async (req: any, res: Response) => {
+export const setSubscriptionAmount = async (req: AuthRequest, res: Response) => {
     try {
-        if (req.user.role !== Role.SUPER_ADMIN) {
+        if (req.user!.role !== Role.SUPER_ADMIN) {
             return res.status(403).json({ error: 'Forbidden' });
         }
 
         const { adminId, amount } = req.body;
-        if (!adminId || !amount) return res.status(400).json({ error: 'Missing data' });
+        if (!adminId || amount === undefined) return res.status(400).json({ error: 'Missing data' });
 
         await prisma.user.update({
             where: { id: adminId },
-            data: { subscriptionAmount: Number(amount) } as any
+            data: { subscriptionAmount: Number(amount) }
         });
 
         res.json({ success: true });
     } catch (e) {
-        console.error(e);
+        console.error('setSubscriptionAmount error:', e);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
+
+/**
+ * Request a plan upgrade (Admin only)
+ */
+export const requestPlanUpgrade = async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.user!.userId;
+        const { planId, billingCycle, message: userMessage } = req.body;
+
+        if (planId) {
+            // Check if plan exists
+            const plan = await prisma.plan.findUnique({ where: { id: planId } });
+            if (!plan) return res.status(404).json({ error: 'Plan not found' });
+
+            // Check if a pending request already exists
+            const existingRequest = await prisma.planUpgradeRequest.findFirst({
+                where: {
+                    userId,
+                    planId,
+                    billingCycle: billingCycle || 'MONTHLY',
+                    status: 'PENDING'
+                }
+            });
+
+            if (existingRequest) {
+                return res.status(400).json({ error: 'You already have a pending upgrade request for this plan and cycle.' });
+            }
+        } else {
+            // Check if a general Custom pending request exists
+            const existingCustom = await prisma.planUpgradeRequest.findFirst({
+                where: {
+                    userId,
+                    planId: null,
+                    status: 'PENDING'
+                }
+            });
+            if (existingCustom) {
+                return res.status(400).json({ error: 'You already have a pending custom plan request.' });
+            }
+        }
+
+        const request = await prisma.planUpgradeRequest.create({
+            data: {
+                userId,
+                planId: planId || null,
+                billingCycle: billingCycle || 'MONTHLY',
+                message: userMessage || (planId ? null : 'Requesting a custom plan configuration.'),
+                status: 'PENDING'
+            }
+        });
+
+        res.json({
+            success: true,
+            message: planId
+                ? 'Upgrade request submitted successfully. Our team will review it shortly.'
+                : 'Custom plan request submitted. Our team will contact you to discuss your requirements.',
+            data: request
+        });
+    } catch (e) {
+        console.error('requestPlanUpgrade error:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+

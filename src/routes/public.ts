@@ -1,16 +1,17 @@
-import express from 'express';
-import { initPublicChat, trackWARedirect } from '../controllers/publicController';
+import express, { Request, Response } from 'express';
+import { initPublicChat, trackWARedirect, getPublicPlans } from '../controllers/publicController';
 import { getMessages, sendMessage, markRead } from '../controllers/messageController';
 import ogs from 'open-graph-scraper';
 
 const router = express.Router();
 
+router.get('/plans', getPublicPlans);
 router.post('/init', initPublicChat as any);
 router.post('/wa-redirect', trackWARedirect as any);
 router.get('/messages', getMessages as any);
 router.post('/messages', sendMessage as any);
 router.post('/mark-read', markRead as any);
-router.post('/preview', async (req, res) => {
+router.post('/preview', async (req: Request, res: Response) => {
     try {
         const { url } = req.body;
         if (!url) return res.status(400).json({ error: 'Missing url' });

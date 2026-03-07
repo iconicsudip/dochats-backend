@@ -21,6 +21,11 @@ async function main() {
                 username: superAdminUsername,
                 password: hashedPassword,
                 role: 'SUPER_ADMIN',
+                subscriptionAmount: 0,
+                planId: null,
+                billingCycle: 'MONTHLY',
+                subUsersLimit: 0,
+                linksLimit: 0,
             },
         });
         console.log(`✅ Super Admin created: ${superAdminUsername}`);

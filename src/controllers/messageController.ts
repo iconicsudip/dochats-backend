@@ -1,11 +1,9 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { MessageType } from '../enums';
 import { encryptMessage, decryptMessage } from '../lib/encryption';
 import ogs from 'open-graph-scraper';
 import { getIO } from '../socket';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 const extractUrl = (text: string) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -22,10 +20,10 @@ export const getMessages = async (req: Request, res: Response) => {
             take: Number(limit) || 40,
             ...(cursor ? { skip: 1, cursor: { id: cursor as string } } : {}),
             orderBy: { createdAt: 'desc' },
-            include: { replyTo: true } as any
+            include: { replyTo: true }
         });
 
-        const messages = rawMessages.map((m: any) => {
+        const messages = rawMessages.map((m) => {
             let decryptedContent = m.content;
             try { decryptedContent = decryptMessage(m.content); } catch (err) { }
 
@@ -43,7 +41,7 @@ export const getMessages = async (req: Request, res: Response) => {
 
         res.json(messages);
     } catch (e: any) {
-        console.error('Error fetching messages:', e);
+        console.error('getMessages error:', e);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -62,10 +60,9 @@ export const sendMessage = async (req: Request, res: Response) => {
                 content: encrypted,
                 type,
                 isFromAdmin: !!isFromAdmin,
-                linkPreview: null,
                 replyToId: replyToId || null
-            } as any,
-            include: { replyTo: true } as any
+            },
+            include: { replyTo: true }
         });
 
         // Background update for link preview
@@ -80,7 +77,7 @@ export const sendMessage = async (req: Request, res: Response) => {
                     };
                     await prisma.message.update({
                         where: { id: message.id },
-                        data: { linkPreview: linkPreview as any } as any
+                        data: { linkPreview: linkPreview }
                     });
                 }
             }).catch(err => console.error('Background OG Scraper error:', err));
@@ -118,7 +115,7 @@ export const sendMessage = async (req: Request, res: Response) => {
 
         res.status(201).json(newMessage);
     } catch (e: any) {
-        console.error('Error sending message:', e);
+        console.error('sendMessage error:', e);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -141,11 +138,15 @@ export const markRead = async (req: Request, res: Response) => {
             try {
                 const io = getIO();
                 io.to(conversationId).emit('messages_read', { byAdmin: isAdmin });
-            } catch (err) { }
+            } catch (err) {
+                console.error('Socket notification error (markRead):', err);
+            }
         }
 
         res.json({ success: true, count: updateResult.count });
     } catch (e) {
+        console.error('markRead error:', e);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
+

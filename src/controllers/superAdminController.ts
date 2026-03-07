@@ -1,18 +1,17 @@
-import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { Response } from 'express';
 import { Role } from '../enums';
 import { hashPassword } from '../utils/auth';
+import { prisma } from '../lib/prisma';
+import { AuthRequest } from '../middleware/auth';
 
-const prisma = new PrismaClient();
-
-export const getAllAdmins = async (req: any, res: Response) => {
+export const getAllAdmins = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.user || req.user.role !== Role.SUPER_ADMIN) {
             return res.status(403).json({ error: 'Forbidden' });
         }
 
-        const page = Math.max(1, parseInt(req.query.page) || 1);
-        const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+        const page = Math.max(1, parseInt(req.query.page as string) || 1);
+        const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 20));
         const skip = (page - 1) * limit;
 
         const [admins, total] = await Promise.all([
@@ -28,9 +27,13 @@ export const getAllAdmins = async (req: any, res: Response) => {
                     mustChangePassword: true,
                     createdAt: true,
                     subscriptionAmount: true,
+                    planId: true,
+                    plan: true,
+                    subUsersLimit: true,
+                    linksLimit: true,
                     subUsers: { select: { id: true, username: true } },
                     links: { select: { id: true, slug: true, title: true } }
-                } as any,
+                },
                 orderBy: { createdAt: 'desc' },
                 skip,
                 take: limit
@@ -43,29 +46,54 @@ export const getAllAdmins = async (req: any, res: Response) => {
             total,
             page,
             limit,
-            totalPages: Math.ceil(total / limit),
-            defaultAmount: Number(process.env.DEFAULT_SUBSCRIPTION_AMOUNT) || 999
+            totalPages: Math.ceil(total / limit)
         });
     } catch (e) {
-        console.error(e);
+        console.error('getAllAdmins error:', e);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
 
-export const createAdmin = async (req: any, res: Response) => {
+export const createAdmin = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.user || req.user.role !== Role.SUPER_ADMIN) {
             return res.status(403).json({ error: 'Forbidden' });
         }
 
-        const { username, password, name, logoUrl, subscriptionAmount } = req.body;
-        if (!username || !password) return res.status(400).json({ error: 'Missing data' });
+        const {
+            username,
+            password,
+            name,
+            logoUrl,
+            subscriptionAmount,
+            planId,
+            billingCycle,
+            subUsersLimit,
+            linksLimit
+        } = req.body;
+
+        if (!username || !password) {
+            return res.status(400).json({ error: 'Username and password are required' });
+        }
 
         const existing = await prisma.user.findUnique({ where: { username } });
         if (existing) return res.status(400).json({ error: 'Username already exists' });
 
-        const defaultAmount = Number(process.env.DEFAULT_SUBSCRIPTION_AMOUNT) || 999;
-        const finalSubscriptionAmount = subscriptionAmount ? Number(subscriptionAmount) : defaultAmount;
+        let finalSubscriptionAmount: number = 0;
+        let finalSubUsersLimit = subUsersLimit !== undefined ? Number(subUsersLimit) : 3;
+        let finalLinksLimit = linksLimit !== undefined ? Number(linksLimit) : 5;
+
+        if (planId) {
+            const plan = await prisma.plan.findUnique({ where: { id: planId } });
+            if (plan) {
+                const planPrice = (billingCycle || 'MONTHLY') === 'YEARLY' ? plan.yearlyPrice : plan.monthlyPrice;
+                finalSubscriptionAmount = subscriptionAmount !== undefined ? Number(subscriptionAmount) : planPrice;
+                if (subUsersLimit === undefined) finalSubUsersLimit = plan.subUsersLimit;
+                if (linksLimit === undefined) finalLinksLimit = plan.linksLimit;
+            }
+        } else if (subscriptionAmount !== undefined) {
+            finalSubscriptionAmount = Number(subscriptionAmount);
+        }
 
         const hashedPassword = await hashPassword(password);
         const user = await prisma.user.create({
@@ -76,8 +104,12 @@ export const createAdmin = async (req: any, res: Response) => {
                 logoUrl,
                 role: Role.ADMIN,
                 mustChangePassword: true,
-                subscriptionAmount: finalSubscriptionAmount
-            } as any
+                subscriptionAmount: finalSubscriptionAmount,
+                planId,
+                billingCycle: billingCycle || 'MONTHLY',
+                subUsersLimit: finalSubUsersLimit,
+                linksLimit: finalLinksLimit
+            }
         });
 
         // Auto-create first 30-day subscription (complimentary first month)
@@ -105,28 +137,73 @@ export const createAdmin = async (req: any, res: Response) => {
             }
         });
 
-        res.status(201).json({ id: user.id, username: user.username, role: user.role, name: (user as any).name, logoUrl: (user as any).logoUrl });
+        res.status(201).json({
+            id: user.id,
+            username: user.username,
+            role: user.role,
+            name: user.name,
+            logoUrl: user.logoUrl
+        });
     } catch (e) {
-        console.error(e);
+        console.error('createAdmin error:', e);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
 
-export const updateAdmin = async (req: any, res: Response) => {
+export const updateAdmin = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.user || req.user.role !== Role.SUPER_ADMIN) {
             return res.status(403).json({ error: 'Forbidden' });
         }
 
         const { id } = req.params;
-        const { name, logoUrl, password, subscriptionAmount } = req.body;
+        const {
+            name,
+            logoUrl,
+            password,
+            subscriptionAmount,
+            planId,
+            billingCycle,
+            subUsersLimit,
+            linksLimit
+        } = req.body;
 
-        const updateData: any = { name, logoUrl };
+        const updateData: any = {};
+        if (name !== undefined) updateData.name = name;
+        if (logoUrl !== undefined) updateData.logoUrl = logoUrl;
+
         if (password) {
             updateData.password = await hashPassword(password);
         }
         if (subscriptionAmount !== undefined) {
             updateData.subscriptionAmount = Number(subscriptionAmount);
+        }
+        if (billingCycle !== undefined) {
+            updateData.billingCycle = billingCycle;
+        }
+
+        if (planId !== undefined) {
+            updateData.planId = planId;
+            if (planId) {
+                const plan = await prisma.plan.findUnique({ where: { id: planId } });
+                if (plan) {
+                    const currentCycle = billingCycle || updateData.billingCycle || 'MONTHLY';
+                    if (subUsersLimit === undefined) updateData.subUsersLimit = plan.subUsersLimit;
+                    if (linksLimit === undefined) updateData.linksLimit = plan.linksLimit;
+                    if (subscriptionAmount === undefined) {
+                        updateData.subscriptionAmount = currentCycle === 'YEARLY' ? plan.yearlyPrice : plan.monthlyPrice;
+                    }
+                }
+            } else {
+                updateData.planId = null;
+            }
+        }
+
+        if (subUsersLimit !== undefined) {
+            updateData.subUsersLimit = Number(subUsersLimit);
+        }
+        if (linksLimit !== undefined) {
+            updateData.linksLimit = Number(linksLimit);
         }
 
         const user = await prisma.user.update({
@@ -134,33 +211,29 @@ export const updateAdmin = async (req: any, res: Response) => {
             data: updateData
         });
 
-        res.json({ id: user.id, username: user.username, name: (user as any).name, logoUrl: (user as any).logoUrl });
+        res.json({ id: user.id, username: user.username, name: user.name, logoUrl: user.logoUrl });
     } catch (e) {
-        console.error(e);
+        console.error('updateAdmin error:', e);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
 
-export const deleteAdmin = async (req: any, res: Response) => {
+export const deleteAdmin = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.user || req.user.role !== Role.SUPER_ADMIN) {
             return res.status(403).json({ error: 'Forbidden' });
         }
 
         const { id } = req.params;
-
-        // Important: Sub-users depend on the admin. Decide if we cascade delete or just reassign.
-        // For now, let's just delete the admin and their associations.
         await prisma.user.delete({ where: { id } });
-
         res.json({ message: 'Admin deleted successfully' });
     } catch (e) {
-        console.error(e);
+        console.error('deleteAdmin error:', e);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
 
-export const getSuperAdminStats = async (req: any, res: Response) => {
+export const getSuperAdminStats = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.user || req.user.role !== Role.SUPER_ADMIN) {
             return res.status(403).json({ error: 'Forbidden' });
@@ -191,11 +264,187 @@ export const getSuperAdminStats = async (req: any, res: Response) => {
             totalLinks,
             totalConversations,
             totalMessages,
-            recentConversations,
-            defaultAmount: Number(process.env.DEFAULT_SUBSCRIPTION_AMOUNT) || 999
+            recentConversations
         });
     } catch (e) {
-        console.error(e);
+        console.error('getSuperAdminStats error:', e);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
+
+export const getAllPlans = async (req: AuthRequest, res: Response) => {
+    try {
+        if (!req.user || (req.user.role !== Role.SUPER_ADMIN && req.user.role !== Role.ADMIN)) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const plans = await prisma.plan.findMany({
+            orderBy: { order: 'asc' }
+        });
+
+        res.json(plans);
+    } catch (e) {
+        console.error('getAllPlans error:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const createPlan = async (req: AuthRequest, res: Response) => {
+    try {
+        if (!req.user || req.user.role !== Role.SUPER_ADMIN) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const { name, monthlyPrice, yearlyPrice, order, subUsersLimit, linksLimit, description } = req.body;
+        if (!name || monthlyPrice === undefined || yearlyPrice === undefined) {
+            return res.status(400).json({ error: 'Name, monthly price and yearly price are required' });
+        }
+
+        const plan = await prisma.plan.create({
+            data: {
+                name,
+                monthlyPrice: Number(monthlyPrice),
+                yearlyPrice: Number(yearlyPrice),
+                order: Number(order) || 0,
+                subUsersLimit: Number(subUsersLimit) || 3,
+                linksLimit: Number(linksLimit) || 5,
+                description
+            }
+        });
+
+        res.status(201).json(plan);
+    } catch (e) {
+        console.error('createPlan error:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const updatePlan = async (req: AuthRequest, res: Response) => {
+    try {
+        if (!req.user || req.user.role !== Role.SUPER_ADMIN) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const { id } = req.params;
+        const { name, monthlyPrice, yearlyPrice, order, subUsersLimit, linksLimit, description } = req.body;
+
+        const plan = await prisma.plan.update({
+            where: { id },
+            data: {
+                name,
+                monthlyPrice: monthlyPrice !== undefined ? Number(monthlyPrice) : undefined,
+                yearlyPrice: yearlyPrice !== undefined ? Number(yearlyPrice) : undefined,
+                order: order !== undefined ? Number(order) : undefined,
+                subUsersLimit: subUsersLimit !== undefined ? Number(subUsersLimit) : undefined,
+                linksLimit: linksLimit !== undefined ? Number(linksLimit) : undefined,
+                description
+            }
+        });
+
+        res.json(plan);
+    } catch (e) {
+        console.error('updatePlan error:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const deletePlan = async (req: AuthRequest, res: Response) => {
+    try {
+        if (!req.user || req.user.role !== Role.SUPER_ADMIN) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const { id } = req.params;
+
+        // Check if any users are on this plan
+        const usersCount = await prisma.user.count({ where: { planId: id } });
+        if (usersCount > 0) {
+            return res.status(400).json({ error: 'Cannot delete plan as it is assigned to users' });
+        }
+
+        await prisma.plan.delete({ where: { id } });
+
+        res.json({ message: 'Plan deleted successfully' });
+    } catch (e) {
+        console.error('deletePlan error:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getUpgradeRequests = async (req: AuthRequest, res: Response) => {
+    try {
+        if (!req.user || req.user.role !== Role.SUPER_ADMIN) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const requests = await prisma.planUpgradeRequest.findMany({
+            include: {
+                user: { select: { id: true, username: true, name: true, logoUrl: true, plan: true } },
+                plan: true
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        res.json(requests);
+    } catch (e) {
+        console.error('getUpgradeRequests error:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const handleUpgradeRequest = async (req: AuthRequest, res: Response) => {
+    try {
+        if (!req.user || req.user.role !== Role.SUPER_ADMIN) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const { id } = req.params;
+        const { status } = req.body; // APPROVED or REJECTED
+
+        if (!['APPROVED', 'REJECTED'].includes(status)) {
+            return res.status(400).json({ error: 'Invalid status' });
+        }
+
+        const request = await prisma.planUpgradeRequest.findUnique({
+            where: { id },
+            include: { plan: true }
+        });
+
+        if (!request) return res.status(404).json({ error: 'Request not found' });
+
+        if (request.status !== 'PENDING') {
+            return res.status(400).json({ error: 'Request already processed' });
+        }
+
+        if (status === 'APPROVED') {
+            if (request.planId && request.plan) {
+                const amount = request.billingCycle === 'YEARLY' ? request.plan.yearlyPrice : request.plan.monthlyPrice;
+                await prisma.user.update({
+                    where: { id: request.userId },
+                    data: {
+                        planId: request.planId,
+                        billingCycle: request.billingCycle,
+                        subscriptionAmount: amount,
+                        subUsersLimit: request.plan.subUsersLimit,
+                        linksLimit: request.plan.linksLimit
+                    }
+                });
+            }
+        }
+
+        const updatedRequest = await prisma.planUpgradeRequest.update({
+            where: { id },
+            data: { status }
+        });
+
+        res.json({
+            success: true,
+            message: `Request ${status.toLowerCase()} successfully`,
+            data: updatedRequest
+        });
+    } catch (e) {
+        console.error('handleUpgradeRequest error:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
