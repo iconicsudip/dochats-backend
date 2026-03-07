@@ -7,7 +7,8 @@ async function main() {
 
     try {
         // Delete in order to respect foreign key constraints
-        // 1. Messages (references Conversations)
+
+        // 1. Messages (references Conversations and itself)
         await prisma.message.deleteMany();
         console.log('✅ Cleared Messages');
 
@@ -15,15 +16,33 @@ async function main() {
         await prisma.conversation.deleteMany();
         console.log('✅ Cleared Conversations');
 
-        // 3. ShortLinks (references Users)
+        // 3. Payments (references Subscription)
+        await prisma.payment.deleteMany();
+        console.log('✅ Cleared Payments');
+
+        // 4. Subscriptions (references User)
+        await prisma.subscription.deleteMany();
+        console.log('✅ Cleared Subscriptions');
+
+        // 5. ShortLinks (references User)
         await prisma.shortLink.deleteMany();
         console.log('✅ Cleared ShortLinks');
 
-        // 4. Users (Self-referential parentId)
-        // We might need to clear parentId first if there are cycles, 
-        // but Prisma deleteMany usually handles top-level deletes well in this schema.
+        // 6. PlanUpgradeRequests (references User and Plan)
+        await prisma.planUpgradeRequest.deleteMany();
+        console.log('✅ Cleared PlanUpgradeRequests');
+
+        // 7. Users (Self-referential parentId)
+        // We first clear the parentId relationship to avoid fk issues on self-relation
+        await prisma.user.updateMany({
+            data: { parentId: null }
+        });
         await prisma.user.deleteMany();
         console.log('✅ Cleared Users');
+
+        // 8. Plans
+        await prisma.plan.deleteMany();
+        console.log('✅ Cleared Plans');
 
         console.log('✨ All tables cleared successfully!');
     } catch (error) {
