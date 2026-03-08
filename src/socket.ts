@@ -29,6 +29,15 @@ export const initSocket = (server: any) => {
             console.log(`Socket ${socket.id} joined admin room: admin_${userId}`);
         });
 
+        // Typing indicators
+        socket.on('typing', (data: { conversationId: string; isFromAdmin: boolean }) => {
+            socket.to(data.conversationId).emit('user_typing', data);
+        });
+
+        socket.on('stop_typing', (data: { conversationId: string; isFromAdmin: boolean }) => {
+            socket.to(data.conversationId).emit('user_stop_typing', data);
+        });
+
         socket.on('disconnect', () => {
             console.log('User disconnected:', socket.id);
         });

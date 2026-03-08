@@ -94,3 +94,47 @@ export const getConversations = async (req: AuthRequest, res: Response) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 }
+
+export const downloadLeads = async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.user?.userId;
+        if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            include: { assignedLinks: { select: { id: true } } }
+        });
+
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        const whereClause = user.role === Role.SUB_USER
+            ? {
+                linkId: { in: user.assignedLinks.map(l => l.id) },
+                OR: [{ visitorName: { not: null } }, { visitorPhone: { not: null } }]
+            }
+            : {
+                link: { creatorId: userId },
+                OR: [{ visitorName: { not: null } }, { visitorPhone: { not: null } }]
+            };
+
+        const conversations = await prisma.conversation.findMany({
+            where: whereClause,
+            include: {
+                link: { select: { title: true } }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        const leads = conversations.map(c => ({
+            name: c.visitorName || 'Anonymous',
+            phone: c.visitorPhone || 'N/A',
+            link: c.link.title,
+            date: c.createdAt
+        }));
+
+        res.json(leads);
+    } catch (e) {
+        console.error('[downloadLeads Error]:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};

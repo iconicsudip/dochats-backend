@@ -16,7 +16,8 @@
     "pm2:start:prod": "npm run build && npm run migration:run && pm2 start ecosystem.config.js --env production",
     "pm2:stop": "pm2 stop dochats-server",
     "pm2:restart": "npm run build && npm run migration:run && pm2 restart dochats-server",
-    "pm2:delete": "pm2 delete dochats-server"
+    "pm2:delete": "pm2 delete dochats-server",
+    "pm2:logs": "pm2 logs dochats-server"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",

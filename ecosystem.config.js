@@ -3,25 +3,25 @@ module.exports = {
     {
       name: "dochats-server",
       script: "./dist/index.js",
-      instances: 1,
+      instances: 1, // Change to "max" or any number > 1 if using Redis adapter for socket.io
       exec_mode: "cluster",
       watch: false,
-      max_memory_restart: "500M",
+      max_memory_restart: "1G",
       env: {
-        NODE_ENV: "development",
-      },
-      env_production: {
         NODE_ENV: "production",
+        PORT: 5001
       },
-      error_file: "/dev/null",
-      out_file: "/dev/null",
-      log_file: "/dev/null",
+      // Note: If you increase instances > 1, you must use 
+      // @socket.io/redis-adapter or ensure sticky sessions 
+      // on your load balancer (e.g. Nginx ip_hash)
+      error_file: "./logs/err.log",
+      out_file: "./logs/out.log",
+      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+      combine_logs: true,
       time: true,
       autorestart: true,
       max_restarts: 10,
-      min_uptime: "10s",
-      listen_timeout: 3000,
-      kill_timeout: 5000,
+      min_uptime: "10s"
     },
   ],
 };

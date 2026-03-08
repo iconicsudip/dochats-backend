@@ -12,7 +12,13 @@ export const initPublicChat = async (req: Request, res: Response) => {
             where: { slug },
             include: {
                 creator: {
-                    select: { id: true, name: true, logoUrl: true, username: true }
+                    select: {
+                        id: true,
+                        name: true,
+                        logoUrl: true,
+                        username: true,
+                        plan: { select: { leadCaptureEnabled: true } }
+                    }
                 }
             }
         });
@@ -74,7 +80,8 @@ export const initPublicChat = async (req: Request, res: Response) => {
             whatsappLink: link.whatsappLink,
             whatsappThreshold: link.whatsappThreshold,
             visitorName: conversation.visitorName,
-            visitorPhone: conversation.visitorPhone
+            visitorPhone: conversation.visitorPhone,
+            leadCaptureEnabled: link.creator.plan?.leadCaptureEnabled ?? false
         });
     } catch (e) {
         console.error('initPublicChat error:', e);
