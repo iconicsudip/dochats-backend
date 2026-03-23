@@ -279,6 +279,7 @@ export const getAllPlans = async (req: AuthRequest, res: Response) => {
         }
 
         const plans = await prisma.plan.findMany({
+            where: req.user.role === Role.ADMIN ? { isPublic: true } : {},
             orderBy: { order: 'asc' }
         });
 
@@ -295,7 +296,7 @@ export const createPlan = async (req: AuthRequest, res: Response) => {
             return res.status(403).json({ error: 'Forbidden' });
         }
 
-        const { name, monthlyPrice, yearlyPrice, order, subUsersLimit, linksLimit, leadCaptureEnabled, description } = req.body;
+        const { name, monthlyPrice, yearlyPrice, order, subUsersLimit, linksLimit, leadCaptureEnabled, isPublic, description } = req.body;
         if (!name || monthlyPrice === undefined || yearlyPrice === undefined) {
             return res.status(400).json({ error: 'Name, monthly price and yearly price are required' });
         }
@@ -309,6 +310,7 @@ export const createPlan = async (req: AuthRequest, res: Response) => {
                 subUsersLimit: Number(subUsersLimit) || 3,
                 linksLimit: Number(linksLimit) || 5,
                 leadCaptureEnabled: !!leadCaptureEnabled,
+                isPublic: isPublic !== undefined ? !!isPublic : true,
                 description
             }
         });
@@ -327,7 +329,7 @@ export const updatePlan = async (req: AuthRequest, res: Response) => {
         }
 
         const { id } = req.params;
-        const { name, monthlyPrice, yearlyPrice, order, subUsersLimit, linksLimit, leadCaptureEnabled, description } = req.body;
+        const { name, monthlyPrice, yearlyPrice, order, subUsersLimit, linksLimit, leadCaptureEnabled, isPublic, description } = req.body;
 
         const plan = await prisma.plan.update({
             where: { id },
@@ -339,6 +341,7 @@ export const updatePlan = async (req: AuthRequest, res: Response) => {
                 subUsersLimit: subUsersLimit !== undefined ? Number(subUsersLimit) : undefined,
                 linksLimit: linksLimit !== undefined ? Number(linksLimit) : undefined,
                 leadCaptureEnabled: leadCaptureEnabled !== undefined ? !!leadCaptureEnabled : undefined,
+                isPublic: isPublic !== undefined ? !!isPublic : undefined,
                 description
             }
         });

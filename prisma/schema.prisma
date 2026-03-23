@@ -53,6 +53,7 @@ model Plan {
   subUsersLimit      Int                  @default(3)
   linksLimit         Int                  @default(5)
   leadCaptureEnabled Boolean              @default(false)
+  isPublic           Boolean              @default(true)
   description        String?
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt

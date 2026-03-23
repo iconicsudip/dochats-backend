@@ -109,6 +109,7 @@ export const trackWARedirect = async (req: Request, res: Response) => {
 export const getPublicPlans = async (req: Request, res: Response) => {
     try {
         const plans = await prisma.plan.findMany({
+            where: { isPublic: true },
             orderBy: { order: 'asc' }
         });
         res.json(plans);
