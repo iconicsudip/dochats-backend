@@ -85,7 +85,10 @@ export const sendMessage = async (req: Request, res: Response) => {
 
         const updatedConv = await prisma.conversation.update({
             where: { id: conversationId },
-            data: { lastMessageAt: new Date() },
+            data: { 
+                lastMessageAt: new Date(),
+                noReplyTriggered: false
+            },
             include: { link: true }
         });
 

@@ -31,6 +31,7 @@ export const getAllAdmins = async (req: AuthRequest, res: Response) => {
                     plan: true,
                     subUsersLimit: true,
                     linksLimit: true,
+                    moduleConfig: true,
                     subUsers: { select: { id: true, username: true } },
                     links: { select: { id: true, slug: true, title: true } }
                 },
@@ -296,7 +297,7 @@ export const createPlan = async (req: AuthRequest, res: Response) => {
             return res.status(403).json({ error: 'Forbidden' });
         }
 
-        const { name, monthlyPrice, yearlyPrice, order, subUsersLimit, linksLimit, leadCaptureEnabled, isPublic, description } = req.body;
+        const { name, monthlyPrice, yearlyPrice, order, subUsersLimit, linksLimit, leadCaptureEnabled, isPublic, description, enabledModules } = req.body;
         if (!name || monthlyPrice === undefined || yearlyPrice === undefined) {
             return res.status(400).json({ error: 'Name, monthly price and yearly price are required' });
         }
@@ -311,7 +312,8 @@ export const createPlan = async (req: AuthRequest, res: Response) => {
                 linksLimit: Number(linksLimit) || 5,
                 leadCaptureEnabled: !!leadCaptureEnabled,
                 isPublic: isPublic !== undefined ? !!isPublic : true,
-                description
+                description,
+                enabledModules: enabledModules || []
             }
         });
 
@@ -329,7 +331,7 @@ export const updatePlan = async (req: AuthRequest, res: Response) => {
         }
 
         const { id } = req.params;
-        const { name, monthlyPrice, yearlyPrice, order, subUsersLimit, linksLimit, leadCaptureEnabled, isPublic, description } = req.body;
+        const { name, monthlyPrice, yearlyPrice, order, subUsersLimit, linksLimit, leadCaptureEnabled, isPublic, description, enabledModules } = req.body;
 
         const plan = await prisma.plan.update({
             where: { id },
@@ -342,7 +344,8 @@ export const updatePlan = async (req: AuthRequest, res: Response) => {
                 linksLimit: linksLimit !== undefined ? Number(linksLimit) : undefined,
                 leadCaptureEnabled: leadCaptureEnabled !== undefined ? !!leadCaptureEnabled : undefined,
                 isPublic: isPublic !== undefined ? !!isPublic : undefined,
-                description
+                description,
+                enabledModules: enabledModules !== undefined ? enabledModules : undefined
             }
         });
 

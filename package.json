@@ -20,13 +20,17 @@
     "pm2:logs": "pm2 logs dochats-server"
   },
   "dependencies": {
+    "@aws-sdk/client-ses": "^3.1045.0",
     "@prisma/client": "^6.19.2",
+    "@types/node-cron": "^3.0.11",
+    "axios": "^1.16.0",
     "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
     "crypto-js": "^4.2.0",
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
     "jsonwebtoken": "^9.0.2",
+    "node-cron": "^4.2.1",
     "open-graph-scraper": "^6.11.0",
     "razorpay": "^2.9.6",
     "socket.io": "^4.8.3"

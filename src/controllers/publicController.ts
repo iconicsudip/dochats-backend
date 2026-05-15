@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
+import ogs from 'open-graph-scraper';
 
 export const initPublicChat = async (req: Request, res: Response) => {
     try {
@@ -81,7 +82,8 @@ export const initPublicChat = async (req: Request, res: Response) => {
             whatsappThreshold: link.whatsappThreshold,
             visitorName: conversation.visitorName,
             visitorPhone: conversation.visitorPhone,
-            leadCaptureEnabled: link.creator.plan?.leadCaptureEnabled ?? false
+            leadCaptureFormId: link.leadCaptureFormId,
+            leadCaptureDelay: link.leadCaptureDelay
         });
     } catch (e) {
         console.error('initPublicChat error:', e);
@@ -119,3 +121,22 @@ export const getPublicPlans = async (req: Request, res: Response) => {
     }
 };
 
+export const getUrlPreview = async (req: Request, res: Response) => {
+    try {
+        const { url } = req.body;
+        if (!url) return res.status(400).json({ error: 'Missing url' });
+        const { result } = await ogs({ url, timeout: 5000 });
+        if (result.success) {
+            res.json({
+                title: result.ogTitle || result.twitterTitle || null,
+                description: result.ogDescription || result.twitterDescription || null,
+                image: result.ogImage?.[0]?.url || result.twitterImage?.[0]?.url || null,
+                url
+            });
+        } else {
+            res.status(400).json({ error: 'Failed to scrape' });
+        }
+    } catch (e) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};

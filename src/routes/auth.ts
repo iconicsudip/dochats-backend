@@ -1,5 +1,5 @@
 import express from 'express';
-import { login, getMe, changePassword, getSubUsers, createSubUser, updateSubUser, deleteSubUser, updateMe } from '../controllers/authController';
+import { login, getMe, changePassword, getSubUsers, createSubUser, updateSubUser, deleteSubUser, updateMe, updateTourStatus } from '../controllers/authController';
 import { authenticate } from '../middleware/auth';
 
 const router = express.Router();
@@ -13,5 +13,6 @@ router.post('/sub-users', authenticate as any, createSubUser);
 router.put('/sub-users/:id', authenticate as any, updateSubUser);
 router.delete('/sub-users/:id', authenticate as any, deleteSubUser);
 router.put('/update-me', authenticate as any, updateMe);
+router.patch('/update-tour', authenticate as any, updateTourStatus);
 
 export default router;

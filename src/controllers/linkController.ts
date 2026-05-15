@@ -50,7 +50,7 @@ export const getAllLinks = async (req: AuthRequest, res: Response) => {
 
 export const createLink = async (req: AuthRequest, res: Response) => {
     try {
-        const { title, welcomeMessage, whatsappLink, whatsappThreshold } = req.body;
+        const { title, welcomeMessage, whatsappLink, whatsappThreshold, leadCaptureFormId, leadCaptureDelay } = req.body;
         if (!title) return res.status(400).json({ error: 'Title is required' });
 
         const currentUser = await prisma.user.findUnique({
@@ -79,6 +79,8 @@ export const createLink = async (req: AuthRequest, res: Response) => {
                 welcomeMessage,
                 whatsappLink,
                 whatsappThreshold: whatsappThreshold ? Number(whatsappThreshold) : undefined,
+                leadCaptureFormId: leadCaptureFormId || null,
+                leadCaptureDelay: leadCaptureDelay !== undefined ? Number(leadCaptureDelay) : undefined,
                 creatorId: req.user!.userId
             }
         });
@@ -93,7 +95,7 @@ export const createLink = async (req: AuthRequest, res: Response) => {
 export const updateLink = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
-        const { title, welcomeMessage, whatsappLink, whatsappThreshold } = req.body;
+        const { title, welcomeMessage, whatsappLink, whatsappThreshold, leadCaptureFormId, leadCaptureDelay } = req.body;
 
         const link = await prisma.shortLink.findUnique({ where: { id } });
         if (!link || link.creatorId !== req.user!.userId) {
@@ -106,7 +108,9 @@ export const updateLink = async (req: AuthRequest, res: Response) => {
                 title,
                 welcomeMessage,
                 whatsappLink,
-                whatsappThreshold: whatsappThreshold !== undefined ? Number(whatsappThreshold) : undefined
+                whatsappThreshold: whatsappThreshold !== undefined ? Number(whatsappThreshold) : undefined,
+                leadCaptureFormId: leadCaptureFormId || null,
+                leadCaptureDelay: leadCaptureDelay !== undefined ? Number(leadCaptureDelay) : undefined
             }
         });
         res.json(updated);

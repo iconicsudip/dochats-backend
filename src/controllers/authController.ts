@@ -9,6 +9,18 @@ import { AuthRequest } from '../middleware/auth';
  */
 const formatUserResponse = (user: any) => {
     const isSuperAdmin = user.role === Role.SUPER_ADMIN;
+    const defaultModules = ['LIVE_CHAT', 'CRM', 'BOOKINGS', 'AUTOMATION', 'ANALYTICS', 'LINKS', 'SUB_USERS', 'BILLING', 'PLANS', 'FORMS', 'WHATSAPP', 'EMAIL'];
+    
+    let userModules: string[] = [];
+    if (isSuperAdmin) {
+        userModules = defaultModules;
+    } else {
+        const planModules = user.plan?.enabledModules || [];
+        const manualModules = user.moduleConfig?.enabledModules || [];
+        // Use Set to remove duplicates
+        const combined = new Set([...planModules, ...manualModules]);
+        userModules = combined.size > 0 ? Array.from(combined) : defaultModules; // fallback to default if both empty
+    }
 
     return {
         id: user.id,
@@ -18,7 +30,11 @@ const formatUserResponse = (user: any) => {
         role: user.role,
         isFirstLogin: user.isFirstLogin,
         mustChangePassword: user.mustChangePassword,
+        hasSeenTour: user.hasSeenTour,
         assignedLinks: user.assignedLinks,
+        enabledModules: userModules,
+        whatsappConfig: user.whatsappConfig,
+        emailConfig: user.emailConfig,
         createdAt: user.createdAt,
         // Only include plan-related info for non-super-admins
         ...(!isSuperAdmin && {
@@ -40,6 +56,7 @@ export const login = async (req: Request, res: Response) => {
         const user = await prisma.user.findUnique({
             where: { username },
             include: {
+                moduleConfig: true,
                 assignedLinks: { select: { id: true, title: true } },
                 plan: true,
                 upgradeRequests: {
@@ -73,6 +90,7 @@ export const getMe = async (req: AuthRequest, res: Response) => {
         const user = await prisma.user.findUnique({
             where: { id: req.user.userId },
             include: {
+                moduleConfig: true,
                 assignedLinks: { select: { id: true, title: true } },
                 plan: true,
                 upgradeRequests: {
@@ -337,34 +355,63 @@ export const updateSubUser = async (req: AuthRequest, res: Response) => {
     }
 };
 
+import { verifySesIdentity } from '../utils/email';
+
 export const updateMe = async (req: AuthRequest, res: Response) => {
     try {
-        const { name, logoUrl, password } = req.body;
+        const { name, logoUrl, password, whatsappConfig, emailConfig } = req.body;
         const updateData: any = {};
 
         // Only update fields that are explicitly provided
         if (name !== undefined) updateData.name = name;
         if (logoUrl !== undefined) updateData.logoUrl = logoUrl;
+        if (whatsappConfig !== undefined) updateData.whatsappConfig = whatsappConfig;
+        
+        if (emailConfig !== undefined) {
+            updateData.emailConfig = emailConfig;
+            // If email is provided, trigger SES verification request
+            if (emailConfig.fromEmail) {
+                try {
+                    await verifySesIdentity(emailConfig.fromEmail);
+                } catch (sesError) {
+                    console.error("[SES] Identity verification request failed:", sesError);
+                    // We don't block the profile update even if SES fails
+                }
+            }
+        }
         if (password) {
             updateData.password = await hashPassword(password);
         }
 
         const user = await prisma.user.update({
             where: { id: req.user!.userId },
-            data: updateData
+            data: updateData,
+            include: {
+                moduleConfig: true,
+                assignedLinks: { select: { id: true, title: true } },
+                plan: true,
+                upgradeRequests: {
+                    where: { status: 'PENDING' },
+                    select: { planId: true, status: true }
+                }
+            }
         });
 
-        res.json({
-            id: user.id,
-            username: user.username,
-            name: user.name,
-            logoUrl: user.logoUrl,
-            role: user.role,
-            createdAt: user.createdAt
-        });
+        res.json(formatUserResponse(user));
     } catch (e) {
         console.error('updateMe error:', e);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
-
+export const updateTourStatus = async (req: AuthRequest, res: Response) => {
+    try {
+        await prisma.user.update({
+            where: { id: req.user!.userId },
+            data: { hasSeenTour: true }
+        });
+        res.json({ success: true });
+    } catch (e) {
+        console.error('updateTourStatus error:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};

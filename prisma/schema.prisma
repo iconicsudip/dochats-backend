@@ -19,6 +19,7 @@ model User {
   role               Role    @default(ADMIN)
   isFirstLogin       Boolean @default(false)
   mustChangePassword Boolean @default(false)
+  hasSeenTour        Boolean @default(false)
   subscriptionAmount Int
 
   planId        String?
@@ -35,7 +36,16 @@ model User {
   assignedLinks   ShortLink[]          @relation("AssignedLinks")
   subscriptions   Subscription[]
   upgradeRequests PlanUpgradeRequest[]
+  crmLeads        CrmLead[]            @relation("OwnedLeads")
+  bookings        Booking[]            @relation("OwnedBookings")
+  automationRules AutomationRule[]     @relation("OwnedRules")
+  emailTemplates  EmailTemplate[]      @relation("OwnedEmailTemplates")
+  forms           CustomForm[]         @relation("OwnedForms")
+  moduleConfig    AdminModuleConfig?   @relation("ModuleConfig")
+  notifications   Notification[]
 
+  whatsappConfig      Json?        // { apiKey: string, phoneNumberId: string, businessAccountId: string }
+  emailConfig         Json?        // { fromEmail: string, fromName: string }
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -55,6 +65,7 @@ model Plan {
   leadCaptureEnabled Boolean              @default(false)
   isPublic           Boolean              @default(true)
   description        String?
+  enabledModules     Json?                // predefined Module[] for the plan
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
   users              User[]
@@ -101,6 +112,8 @@ model ShortLink {
   welcomeMessage    String?        @default("Hello! How can I help you today?")
   whatsappLink      String?
   whatsappThreshold Int            @default(5)
+  leadCaptureFormId String?
+  leadCaptureDelay  Int            @default(3)
   creator           User           @relation("CreatedLinks", fields: [creatorId], references: [id])
   creatorId         String
   assignedUsers     User[]         @relation("AssignedLinks")
@@ -119,9 +132,10 @@ model Conversation {
   link          ShortLink @relation(fields: [linkId], references: [id])
   linkId        String
   messages      Message[]
-  waRedirected  Boolean   @default(false)
-  lastMessageAt DateTime  @default(now())
-  createdAt     DateTime  @default(now())
+  waRedirected      Boolean   @default(false)
+  noReplyTriggered  Boolean   @default(false)
+  lastMessageAt     DateTime  @default(now())
+  createdAt         DateTime  @default(now())
 
   @@index([linkId], name: "idx_conversation_linkId")
   @@index([lastMessageAt], name: "idx_conversation_lastMessageAt")
@@ -196,3 +210,210 @@ enum PaymentStatus {
   PAID
   FAILED
 }
+
+// ─────────────────────────────────────────────
+// MODULE: CRM
+// ─────────────────────────────────────────────
+
+model CrmLead {
+  id         String        @id @default(cuid())
+  owner      User          @relation("OwnedLeads", fields: [ownerId], references: [id])
+  ownerId    String
+  name       String
+  phone      String
+  email      String?
+  industry   String?
+  source     String?       // 'AI Chat' | 'Smart Link' | 'Manual' | 'WhatsApp'
+  status     CrmLeadStatus @default(NEW)
+  value      Int           @default(0)
+  notes      String?       @db.Text
+  assignedTo String?
+  bookings   Booking[]
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@index([ownerId])
+  @@index([status])
+}
+
+enum CrmLeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL
+  WON
+  LOST
+}
+
+// ─────────────────────────────────────────────
+// MODULE: BOOKINGS
+// ─────────────────────────────────────────────
+
+model Booking {
+  id          String        @id @default(cuid())
+  owner       User          @relation("OwnedBookings", fields: [ownerId], references: [id])
+  ownerId     String
+  lead        CrmLead?      @relation(fields: [leadId], references: [id])
+  leadId      String?
+  clientName  String
+  phone       String
+  email       String?       // Explicit email for manual bookings/automation mapping
+  service     String
+  industry    String?
+  date        DateTime
+  duration    Int           @default(60) // minutes
+  status      BookingStatus @default(PENDING)
+  source      String?       // 'AI Chat' | 'Smart Link' | 'Manual'
+  notes       String?       @db.Text
+  assignedTo  String?
+  formData    Json?         // industry-specific dynamic form data
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([ownerId])
+  @@index([date])
+  @@index([status])
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+// ─────────────────────────────────────────────
+// MODULE: AUTOMATION
+// ─────────────────────────────────────────────
+
+model AutomationRule {
+  id        String      @id @default(cuid())
+  owner     User        @relation("OwnedRules", fields: [ownerId], references: [id])
+  ownerId   String
+  name      String
+  trigger   String      // TriggerType key
+  actions   Json        // ActionType[] (Legacy)
+  flow      Json?       // Tree-based logic flow structure
+  config    Json?       // { whatsappTemplate: string, emailSubject: string, etc. }
+  delay     Int?        @default(0) // delay in minutes
+  enabled   Boolean     @default(true)
+  runs      Int         @default(0)
+  lastRunAt DateTime?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  logs      AutomationLog[]
+
+  @@index([ownerId])
+  @@index([enabled])
+}
+
+model AutomationLog {
+  id        String         @id @default(cuid())
+  rule      AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  ruleId    String
+  ownerId   String
+  trigger   String
+  action    String
+  status    LogStatus      @default(SUCCESS)
+  message   String?        @db.Text
+  details   Json?          // Data that was processed
+  executedAt DateTime      @default(now())
+
+  @@index([ruleId])
+  @@index([ownerId])
+}
+
+model ScheduledTask {
+  id          String   @id @default(cuid())
+  ownerId     String
+  ruleId      String
+  action      String
+  data        Json
+  executeAt   DateTime
+  processed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([executeAt])
+  @@index([processed])
+}
+
+enum LogStatus {
+  SUCCESS
+  FAILED
+  DELAYED
+}
+
+// ─────────────────────────────────────────────
+// MODULE ACCESS CONTROL
+// ─────────────────────────────────────────────
+
+model AdminModuleConfig {
+  id             String   @id @default(cuid())
+  admin          User     @relation("ModuleConfig", fields: [adminId], references: [id])
+  adminId        String   @unique
+  enabledModules Json     // Module[]
+  updatedAt      DateTime @updatedAt
+
+  @@index([adminId])
+}
+
+// ─────────────────────────────────────────────
+// MODULE: DYNAMIC FORMS
+// ─────────────────────────────────────────────
+
+model CustomForm {
+  id               String         @id @default(cuid())
+  title            String
+  description      String?        @db.Text
+  fields           Json           // Array of form fields { label, type, required, options }
+  integrationConfig Json?         // { syncToBookings: boolean, fieldMapping: object, automationId: string }
+  owner            User           @relation("OwnedForms", fields: [ownerId], references: [id])
+  ownerId          String
+  isActive         Boolean        @default(true)
+  responses        FormResponse[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([ownerId])
+}
+
+model FormResponse {
+  id        String     @id @default(cuid())
+  form      CustomForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  formId    String
+  data      Json       // Submitted form data
+  metadata  Json?      // IP, User Agent, etc.
+  createdAt DateTime   @default(now())
+
+  @@index([formId])
+}
+model Notification {
+  id        String   @id @default(cuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id])
+  title     String
+  message   String
+  type      String   @default("INFO") // INFO, WARNING, ALERT
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([ownerId], name: "idx_notification_ownerId")
+}
+
+model EmailTemplate {
+  id        String   @id @default(cuid())
+  owner     User     @relation("OwnedEmailTemplates", fields: [ownerId], references: [id])
+  ownerId   String
+  name      String
+  subject   String
+  content   String   @db.Text    // Final HTML for sending
+  design    Json?                // Editor state (blocks, colors, etc)
+  sesSynced Boolean  @default(false)
+  sesTemplateName String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([sesSynced])
+}
+
