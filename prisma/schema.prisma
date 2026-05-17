@@ -367,9 +367,11 @@ model CustomForm {
   description      String?        @db.Text
   fields           Json           // Array of form fields { label, type, required, options }
   integrationConfig Json?         // { syncToBookings: boolean, fieldMapping: object, automationId: string }
+  design           Json?          // { primaryColor: string, backgroundColor: string, textColor: string }
   owner            User           @relation("OwnedForms", fields: [ownerId], references: [id])
   ownerId          String
   isActive         Boolean        @default(true)
+  addToCrm         Boolean        @default(false)
   responses        FormResponse[]
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt

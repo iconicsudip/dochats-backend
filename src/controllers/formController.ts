@@ -54,7 +54,7 @@ export const getForm = async (req: Request, res: Response) => {
  */
 export const createForm = async (req: AuthRequest, res: Response) => {
     try {
-        const { title, description, fields, integrationConfig } = req.body;
+        const { title, description, fields, integrationConfig, addToCrm, design } = req.body;
         
         if (!title || !fields || !Array.isArray(fields)) {
             return res.status(400).json({ error: 'Title and fields are required' });
@@ -66,6 +66,8 @@ export const createForm = async (req: AuthRequest, res: Response) => {
                 description,
                 fields,
                 integrationConfig,
+                design,
+                addToCrm: addToCrm !== undefined ? addToCrm : false,
                 ownerId: req.user!.userId
             }
         });
@@ -83,7 +85,7 @@ export const createForm = async (req: AuthRequest, res: Response) => {
 export const updateForm = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
-        const { title, description, fields, isActive, integrationConfig } = req.body;
+        const { title, description, fields, isActive, integrationConfig, addToCrm, design } = req.body;
 
         const existing = await prisma.customForm.findFirst({
             where: { id, ownerId: req.user!.userId }
@@ -98,7 +100,9 @@ export const updateForm = async (req: AuthRequest, res: Response) => {
                 description: description !== undefined ? description : existing.description,
                 fields: fields !== undefined ? fields : existing.fields as any,
                 integrationConfig: integrationConfig !== undefined ? integrationConfig : existing.integrationConfig as any,
-                isActive: isActive !== undefined ? isActive : existing.isActive
+                design: design !== undefined ? design : existing.design as any,
+                isActive: isActive !== undefined ? isActive : existing.isActive,
+                addToCrm: addToCrm !== undefined ? addToCrm : existing.addToCrm
             }
         });
 
@@ -185,6 +189,30 @@ export const submitResponse = async (req: Request, res: Response) => {
                 }
             }
         });
+
+        // ─────────────────────────────────────────────
+        // INTEGRATIONS: Sync to CRM
+        // ─────────────────────────────────────────────
+        if (form.addToCrm) {
+            try {
+                let crmName = processedData['name'] || processedData['full_name'] || processedData['first_name'] || 'Unknown';
+                let crmPhone = processedData['phone'] || processedData['phone_number'] || processedData['whatsapp_number'] || '';
+                let crmEmail = processedData['email'] || processedData['email_address'] || null;
+                
+                await prisma.crmLead.create({
+                    data: {
+                        ownerId: form.ownerId,
+                        name: crmName,
+                        phone: crmPhone,
+                        email: crmEmail,
+                        source: 'Dynamic Form',
+                        notes: `Automatically added from form: ${form.title}. Response ID: ${response.id}\n\nFormData:\n${JSON.stringify(processedData, null, 2)}`
+                    }
+                });
+            } catch (crmError) {
+                console.error('Failed to sync to CRM:', crmError);
+            }
+        }
 
         // ─────────────────────────────────────────────
         // INTEGRATIONS: Sync to Bookings

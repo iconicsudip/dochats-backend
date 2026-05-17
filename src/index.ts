@@ -19,19 +19,13 @@ import analyticsRoutes from './routes/analytics';
 import formRoutes from './routes/form';
 import emailRoutes from './routes/email';
 
-import http from 'http';
-import { initSocket } from './socket';
 import { initCron } from './utils/cron';
 
 const app = express();
-const server = http.createServer(app);
 const PORT = process.env.PORT || 5001;
 
 // Initialize Background Jobs
 initCron();
-
-// Initialize Socket.io
-initSocket(server);
 
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
@@ -57,6 +51,6 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
 });
 
-server.listen(PORT, () => {
-    console.log(`Server & Socket.io running on port ${PORT}`);
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
 });

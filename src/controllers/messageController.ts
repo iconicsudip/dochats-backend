@@ -2,7 +2,6 @@ import { Request, Response } from 'express';
 import { MessageType } from '../enums';
 import { encryptMessage, decryptMessage } from '../lib/encryption';
 import ogs from 'open-graph-scraper';
-import { getIO } from '../socket';
 import { prisma } from '../lib/prisma';
 
 const extractUrl = (text: string) => {
@@ -105,16 +104,7 @@ export const sendMessage = async (req: Request, res: Response) => {
             replyTo: (message as any).replyTo ? { ...(message as any).replyTo, content: decryptedReplyContent } : null
         };
 
-        // Real-time Push
-        try {
-            const io = getIO();
-            // Emit to the specific chat room
-            io.to(conversationId).emit('receive_message', newMessage);
-            // Alert dashboard to update
-            io.to(`admin_${updatedConv.link.creatorId}`).emit('conversation_updated');
-        } catch (err) {
-            console.error('Socket push error:', err);
-        }
+        // Real-time Push (removed)
 
         res.status(201).json(newMessage);
     } catch (e: any) {
@@ -137,14 +127,7 @@ export const markRead = async (req: Request, res: Response) => {
             data: { isRead: true }
         });
 
-        if (updateResult.count > 0) {
-            try {
-                const io = getIO();
-                io.to(conversationId).emit('messages_read', { byAdmin: isAdmin });
-            } catch (err) {
-                console.error('Socket notification error (markRead):', err);
-            }
-        }
+        // Real-time notification removed
 
         res.json({ success: true, count: updateResult.count });
     } catch (e) {
