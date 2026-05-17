@@ -28,6 +28,7 @@ const formatUserResponse = (user: any) => {
         name: user.name,
         logoUrl: user.logoUrl,
         role: user.role,
+        parentId: user.parentId || null,
         isFirstLogin: user.isFirstLogin,
         mustChangePassword: user.mustChangePassword,
         hasSeenTour: user.hasSeenTour,
@@ -62,6 +63,11 @@ export const login = async (req: Request, res: Response) => {
                 upgradeRequests: {
                     where: { status: 'PENDING' },
                     select: { planId: true, status: true }
+                },
+                subscriptions: {
+                    orderBy: { endDate: 'desc' },
+                    take: 1,
+                    include: { payment: true }
                 }
             }
         });
@@ -96,6 +102,11 @@ export const getMe = async (req: AuthRequest, res: Response) => {
                 upgradeRequests: {
                     where: { status: 'PENDING' },
                     select: { planId: true, status: true }
+                },
+                subscriptions: {
+                    orderBy: { endDate: 'desc' },
+                    take: 1,
+                    include: { payment: true }
                 }
             }
         });
@@ -108,11 +119,7 @@ export const getMe = async (req: AuthRequest, res: Response) => {
 
         // Include subscription info for ADMIN users
         if (user.role === Role.ADMIN) {
-            const latestSub = await prisma.subscription.findFirst({
-                where: { userId: user.id },
-                orderBy: { endDate: 'desc' },
-                include: { payment: true }
-            });
+            const latestSub = user.subscriptions?.[0];
 
             if (latestSub) {
                 const now = new Date();
@@ -177,15 +184,17 @@ export const getSubUsers = async (req: AuthRequest, res: Response) => {
         const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 20));
         const skip = (page - 1) * limit;
 
+        const parentId = req.user!.parentId || req.user!.userId;
+
         const [subUsers, total] = await Promise.all([
             prisma.user.findMany({
-                where: { parentId: req.user!.userId },
+                where: { parentId },
                 include: { assignedLinks: { select: { id: true, title: true } } },
                 orderBy: { createdAt: 'desc' },
                 skip,
                 take: limit
             }),
-            prisma.user.count({ where: { parentId: req.user!.userId } })
+            prisma.user.count({ where: { parentId } })
         ]);
 
         const formatted = subUsers.map(u => ({
@@ -393,6 +402,11 @@ export const updateMe = async (req: AuthRequest, res: Response) => {
                 upgradeRequests: {
                     where: { status: 'PENDING' },
                     select: { planId: true, status: true }
+                },
+                subscriptions: {
+                    orderBy: { endDate: 'desc' },
+                    take: 1,
+                    include: { payment: true }
                 }
             }
         });

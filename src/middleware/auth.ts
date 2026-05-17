@@ -3,7 +3,7 @@ import { verifyToken } from '../utils/auth';
 import { prisma } from '../lib/prisma';
 
 export interface AuthRequest extends Request {
-    user?: { userId: string, role: string };
+    user?: { userId: string, role: string, parentId: string | null };
 }
 
 export const authenticate = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -19,12 +19,12 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
 
         const user = await prisma.user.findUnique({
             where: { id: payload.userId },
-            select: { id: true, role: true }
+            select: { id: true, role: true, parentId: true }
         });
 
         if (!user) return res.status(401).json({ error: 'Unauthorized' });
 
-        req.user = { userId: user.id, role: user.role };
+        req.user = { userId: user.id, role: user.role, parentId: user.parentId };
         next();
     } catch (error) {
         return res.status(401).json({ error: 'Unauthorized' });

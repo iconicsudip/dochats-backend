@@ -46,6 +46,7 @@ model User {
 
   whatsappConfig      Json?        // { apiKey: string, phoneNumberId: string, businessAccountId: string }
   emailConfig         Json?        // { fromEmail: string, fromName: string }
+  calendarConfig      Json?        // { googleCalendar: { enabled, account, syncToken }, outlook: { enabled, account }, apple: { enabled }, autoGenerateMeet: boolean }
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -122,6 +123,8 @@ model ShortLink {
   updatedAt         DateTime       @updatedAt
 
   @@index([creatorId], name: "idx_shortlink_creatorId")
+  @@index([slug], name: "idx_shortlink_slug")
+  @@index([creatorId, createdAt], name: "idx_shortlink_creator_created")
 }
 
 model Conversation {
@@ -140,6 +143,8 @@ model Conversation {
   @@index([linkId], name: "idx_conversation_linkId")
   @@index([lastMessageAt], name: "idx_conversation_lastMessageAt")
   @@index([linkId, visitorToken], name: "idx_conversation_linkId_visitorToken")
+  @@index([visitorToken], name: "idx_conversation_visitorToken")
+  @@index([linkId, lastMessageAt], name: "idx_conversation_link_lastMsg")
 }
 
 model Message {
@@ -160,6 +165,7 @@ model Message {
   @@index([createdAt], name: "idx_message_createdAt")
   @@index([conversationId, isRead, isFromAdmin], name: "idx_message_conversationId_isRead_isFromAdmin")
   @@index([replyToId], name: "idx_message_replyToId")
+  @@index([conversationId, createdAt], name: "idx_message_conv_createdAt")
 }
 
 enum MessageType {
@@ -182,6 +188,7 @@ model Subscription {
   @@index([userId], name: "idx_subscription_userId")
   @@index([status], name: "idx_subscription_status")
   @@index([endDate], name: "idx_subscription_endDate")
+  @@index([userId, status, endDate], name: "idx_sub_user_status_end")
 }
 
 enum SubscriptionStatus {
@@ -228,12 +235,31 @@ model CrmLead {
   value      Int           @default(0)
   notes      String?       @db.Text
   assignedTo String?
+
+  jobTitle          String?
+  company           String?
+  city              String?
+  address           String?
+  lifecycleStage    String?       @default("Lead") // Lead, MQL, SQL, Customer, Evangelist
+  favoriteTopics    Json?         // e.g. ["AI Chatbots", "WhatsApp"]
+  preferredChannels Json?         // e.g. ["Email", "WhatsApp", "Phone"]
+  communicationSubs Json?         // { newsletter: boolean, marketing: boolean }
+  aiSummary         String?       @db.Text
+  aiInsights        Json?         // { sentiment, suggestedFollowUps: string[], conversationSummary: string }
+  associations      Json?         // { companies: [], deals: [], tickets: [], relationshipLabel: "Decision Maker" }
+  customFields      Json?         // { key: value }
+  activityTimeline  Json?         // Array of { id, type: 'NOTE'|'EMAIL'|'CALL'|'MEETING'|'TASK', title, description, date, status, dueDate }
+
   bookings   Booking[]
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
 
   @@index([ownerId])
   @@index([status])
+  @@index([ownerId, createdAt], name: "idx_crmlead_owner_createdAt")
+  @@index([ownerId, status, createdAt], name: "idx_crmlead_owner_status_createdAt")
+  @@index([phone], name: "idx_crmlead_phone")
+  @@index([email], name: "idx_crmlead_email")
 }
 
 enum CrmLeadStatus {
@@ -266,13 +292,22 @@ model Booking {
   source      String?       // 'AI Chat' | 'Smart Link' | 'Manual'
   notes       String?       @db.Text
   assignedTo  String?
-  formData    Json?         // industry-specific dynamic form data
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  formData           Json?         // industry-specific dynamic form data
+  calendarEventId    String?
+  googleCalendarUrl  String?       @db.Text
+  outlookCalendarUrl String?       @db.Text
+  meetingUrl         String?       @db.Text
+  externalSynced     Boolean       @default(false)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
   @@index([ownerId])
   @@index([date])
   @@index([status])
+  @@index([leadId], name: "idx_booking_leadId")
+  @@index([ownerId, date], name: "idx_booking_owner_date")
+  @@index([ownerId, status, date], name: "idx_booking_owner_status_date")
+  @@index([calendarEventId], name: "idx_booking_calendarEventId")
 }
 
 enum BookingStatus {
@@ -305,6 +340,7 @@ model AutomationRule {
 
   @@index([ownerId])
   @@index([enabled])
+  @@index([ownerId, enabled], name: "idx_autorule_owner_enabled")
 }
 
 model AutomationLog {
@@ -377,6 +413,7 @@ model CustomForm {
   updatedAt        DateTime       @updatedAt
 
   @@index([ownerId])
+  @@index([ownerId, isActive, createdAt], name: "idx_customform_owner_active_created")
 }
 
 model FormResponse {
@@ -388,6 +425,7 @@ model FormResponse {
   createdAt DateTime   @default(now())
 
   @@index([formId])
+  @@index([formId, createdAt], name: "idx_formresponse_form_created")
 }
 model Notification {
   id        String   @id @default(cuid())
