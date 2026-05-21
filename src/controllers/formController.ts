@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { triggerAutomation } from '../utils/automation';
+import { uploadFile, getFileStream } from '../utils/s3';
+import path from 'path';
 
 /**
  * Get all forms for the current user
@@ -158,13 +160,15 @@ export const submitResponse = async (req: Request, res: Response) => {
             processedData[toSnakeCase(key)] = val;
         }
 
+        const responseId = 'res_' + Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
+
         const fields = form.fields as any[];
         for (const field of fields) {
             const fieldKey = toSnakeCase(field.label);
             const value = processedData[fieldKey];
             
             // Handle required fields
-            if (field.required && (!value || value.toString().trim() === '')) {
+            if (field.required && (!value || (Array.isArray(value) ? value.length === 0 : value.toString().trim() === ''))) {
                 return res.status(400).json({ error: `${field.label} is required` });
             }
 
@@ -177,10 +181,39 @@ export const submitResponse = async (req: Request, res: Response) => {
                 // Store with standard +91 prefix
                 processedData[fieldKey] = `+91${cleanPhone}`;
             }
+
+            // Handle image upload field
+            if (field.type === 'image' && value) {
+                const files = Array.isArray(value) ? value : [value];
+                const uploadedFiles = [];
+                for (let idx = 0; idx < files.length; idx++) {
+                    const file = files[idx];
+                    if (file && file.base64 && file.name) {
+                        try {
+                            const uploadRes = await uploadFile(
+                                file.base64,
+                                file.name,
+                                file.type || 'image/jpeg',
+                                responseId,
+                                field.label,
+                                idx
+                            );
+                            uploadedFiles.push(uploadRes);
+                        } catch (uploadErr) {
+                            console.error('File upload error:', uploadErr);
+                            return res.status(500).json({ error: `Failed to upload image: ${file.name}` });
+                        }
+                    } else if (file && file.key) {
+                        uploadedFiles.push(file);
+                    }
+                }
+                processedData[fieldKey] = uploadedFiles;
+            }
         }
 
         const response = await prisma.formResponse.create({
             data: {
+                id: responseId,
                 formId: id,
                 data: processedData,
                 metadata: {
@@ -275,6 +308,60 @@ export const getFormResponses = async (req: AuthRequest, res: Response) => {
         res.json(responses);
     } catch (e) {
         console.error('getFormResponses error:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+/**
+ * Serves files uploaded via forms securely (dashboard-only)
+ */
+export const getResponseFile = async (req: AuthRequest, res: Response) => {
+    try {
+        const { key } = req.query;
+        if (!key || typeof key !== 'string') {
+            return res.status(400).json({ error: 'File key is required' });
+        }
+
+        // Extract responseId from key e.g. "forms/responses/responseId/filename"
+        const parts = key.split('/');
+        if (parts.length < 3 || parts[0] !== 'forms' || parts[1] !== 'responses') {
+            return res.status(400).json({ error: 'Invalid file key format' });
+        }
+        
+        const responseId = parts[2];
+
+        // Find response to check ownership
+        const response = await prisma.formResponse.findUnique({
+            where: { id: responseId },
+            include: { form: true }
+        });
+
+        if (!response) {
+            return res.status(404).json({ error: 'Response not found' });
+        }
+
+        // Verify owner/admin/sub-user access
+        const ownerId = req.user!.parentId || req.user!.userId;
+        if (response.form.ownerId !== ownerId) {
+            return res.status(403).json({ error: 'Access denied to this file' });
+        }
+
+        // Stream the file
+        const { stream, mimeType } = await getFileStream(key);
+        res.setHeader('Content-Type', mimeType);
+        // Force inline display for images, attachment for other files
+        if (mimeType.startsWith('image/')) {
+            res.setHeader('Content-Disposition', 'inline');
+        } else {
+            res.setHeader('Content-Disposition', `attachment; filename="${path.basename(key)}"`);
+        }
+        
+        stream.pipe(res);
+    } catch (e: any) {
+        console.error('getResponseFile error:', e);
+        if (e.message === 'File not found') {
+            return res.status(404).json({ error: 'File not found' });
+        }
         res.status(500).json({ error: 'Internal server error' });
     }
 };

@@ -61,8 +61,8 @@ export const initPublicChat = async (req: Request, res: Response) => {
                     visitorPhone: visitorPhone || null
                 }
             });
-        } else if ((visitorName && !conversation.visitorName) || (visitorPhone && !conversation.visitorPhone)) {
-            // Update existing if name/phone wasn't captured before but is given now
+        } else if ((visitorName && visitorName !== conversation.visitorName) || (visitorPhone && visitorPhone !== conversation.visitorPhone)) {
+            // Update existing if name/phone has changed or wasn't captured before (e.g. tracking tag appended)
             conversation = await prisma.conversation.update({
                 where: { id: conversation.id },
                 data: {

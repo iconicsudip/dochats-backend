@@ -78,7 +78,8 @@ export const getConversations = async (req: AuthRequest, res: Response) => {
                 lastMessage,
                 lastMessageType,
                 lastMessageAt: c.lastMessageAt,
-                unreadCount
+                unreadCount,
+                createdAt: c.createdAt
             };
         });
 

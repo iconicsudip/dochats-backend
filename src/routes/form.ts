@@ -1,5 +1,5 @@
 import express from 'express';
-import { getForms, getForm, createForm, updateForm, deleteForm, submitResponse, getFormResponses } from '../controllers/formController';
+import { getForms, getForm, createForm, updateForm, deleteForm, submitResponse, getFormResponses, getResponseFile } from '../controllers/formController';
 import { authenticate } from '../middleware/auth';
 
 const router = express.Router();
@@ -11,6 +11,7 @@ router.post('/public/:id/submit', submitResponse);
 // Protected routes
 router.get('/', authenticate as any, getForms);
 router.post('/', authenticate as any, createForm);
+router.get('/responses/file', authenticate as any, getResponseFile);
 router.put('/:id', authenticate as any, updateForm);
 router.delete('/:id', authenticate as any, deleteForm);
 router.get('/:id/responses', authenticate as any, getFormResponses);
