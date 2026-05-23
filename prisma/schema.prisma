@@ -43,6 +43,9 @@ model User {
   forms           CustomForm[]         @relation("OwnedForms")
   moduleConfig    AdminModuleConfig?   @relation("ModuleConfig")
   notifications   Notification[]
+  ownedChatGroups ChatGroup[]          @relation("OwnedChatGroups")
+  chatGroupMemberships ChatGroupMember[]
+  groupMessages   GroupMessage[]       @relation("SentGroupMessages")
 
   whatsappConfig      Json?        // { apiKey: string, phoneNumberId: string, businessAccountId: string }
   emailConfig         Json?        // { fromEmail: string, fromName: string }
@@ -357,6 +360,59 @@ model AutomationLog {
 
   @@index([ruleId])
   @@index([ownerId])
+}
+
+// ─────────────────────────────────────────────
+// MODULE: CHAT GROUPS (internal team chat)
+// ─────────────────────────────────────────────
+
+model ChatGroup {
+  id            String            @id @default(cuid())
+  name          String
+  avatarUrl     String?
+  owner         User              @relation("OwnedChatGroups", fields: [ownerId], references: [id])
+  ownerId       String
+  members       ChatGroupMember[]
+  messages      GroupMessage[]
+  lastMessageAt DateTime          @default(now())
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([ownerId])
+  @@index([ownerId, lastMessageAt])
+}
+
+model ChatGroupMember {
+  id       String    @id @default(cuid())
+  group    ChatGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId  String
+  user     User      @relation(fields: [userId], references: [id])
+  userId   String
+  joinedAt DateTime  @default(now())
+
+  @@unique([groupId, userId])
+  @@index([userId])
+  @@index([groupId])
+}
+
+model GroupMessage {
+  id          String        @id @default(cuid())
+  group       ChatGroup     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId     String
+  sender      User          @relation("SentGroupMessages", fields: [senderId], references: [id])
+  senderId    String
+  content     String        @db.Text
+  type        MessageType   @default(TEXT)
+  systemLink  Json?         // { type, id, label, path }
+  linkPreview Json?
+  replyToId   String?
+  replyTo     GroupMessage? @relation("GroupReplyTo", fields: [replyToId], references: [id])
+  replies     GroupMessage[] @relation("GroupReplyTo")
+  createdAt   DateTime      @default(now())
+
+  @@index([groupId])
+  @@index([groupId, createdAt])
+  @@index([senderId])
 }
 
 model ScheduledTask {

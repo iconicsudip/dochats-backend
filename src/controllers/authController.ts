@@ -9,7 +9,7 @@ import { AuthRequest } from '../middleware/auth';
  */
 const formatUserResponse = (user: any) => {
     const isSuperAdmin = user.role === Role.SUPER_ADMIN;
-    const defaultModules = ['LIVE_CHAT', 'CRM', 'BOOKINGS', 'AUTOMATION', 'ANALYTICS', 'LINKS', 'SUB_USERS', 'BILLING', 'PLANS', 'FORMS', 'WHATSAPP', 'EMAIL'];
+    const defaultModules = ['LIVE_CHAT', 'CHAT_GROUPS', 'CRM', 'BOOKINGS', 'AUTOMATION', 'ANALYTICS', 'LINKS', 'SUB_USERS', 'BILLING', 'PLANS', 'FORMS', 'WHATSAPP', 'EMAIL'];
     
     let userModules: string[] = [];
     if (isSuperAdmin) {

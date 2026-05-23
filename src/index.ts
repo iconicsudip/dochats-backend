@@ -18,6 +18,7 @@ import moduleConfigRoutes from './routes/moduleConfig';
 import analyticsRoutes from './routes/analytics';
 import formRoutes from './routes/form';
 import emailRoutes from './routes/email';
+import chatGroupRoutes from './routes/chatGroups';
 
 import { initCron } from './utils/cron';
 
@@ -46,6 +47,7 @@ app.use('/api/modules', moduleConfigRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/forms', formRoutes);
 app.use('/api/email', emailRoutes);
+app.use('/api/chat-groups', chatGroupRoutes);
 
 app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
