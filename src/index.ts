@@ -28,7 +28,10 @@ const PORT = process.env.PORT || 5001;
 // Initialize Background Jobs
 initCron();
 
-app.use(cors());
+app.use(cors({
+    origin: "*",
+    credentials: true,
+}));
 app.use(express.json({ limit: '5mb' }));
 
 // Main Routes
