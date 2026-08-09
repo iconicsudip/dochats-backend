@@ -52,6 +52,8 @@ model User {
   whatsappConfig      Json?        // { apiKey: string, phoneNumberId: string, businessAccountId: string }
   emailConfig         Json?        // { fromEmail: string, fromName: string }
   calendarConfig      Json?        // { googleCalendar: { enabled, account, syncToken }, outlook: { enabled, account }, apple: { enabled }, autoGenerateMeet: boolean }
+  resetToken          String?      @db.Text
+  resetTokenExpiry    DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

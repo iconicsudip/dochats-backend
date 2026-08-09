@@ -7,6 +7,7 @@ import {
     GetTemplateCommand,
     VerifyEmailIdentityCommand
 } from "@aws-sdk/client-ses";
+import { APP_NAME_LOWER } from "./brand";
 
 const ses = new SESClient({
     region: process.env.AWS_REGION || "us-east-1",
@@ -71,7 +72,7 @@ export const verifySesIdentity = async (email: string) => {
 };
 
 export const sendEmail = async (to: string, subject: string, html: string, customFrom?: { email: string, name?: string }) => {
-    const systemFrom = process.env.AWS_FROM_EMAIL || "noreply@dochats.com";
+    const systemFrom = process.env.AWS_FROM_EMAIL || `noreply@${APP_NAME_LOWER}.com`;
     const fromAddress = customFrom?.email || systemFrom;
     const fromSource = customFrom?.name ? `"${customFrom.name}" <${fromAddress}>` : fromAddress;
     

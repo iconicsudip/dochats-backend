@@ -30,7 +30,15 @@ async function main() {
         });
         console.log(`✅ Super Admin created: ${superAdminUsername}`);
     } else {
-        console.log('ℹ️ Super Admin already exists, skipping creation.');
+        const hashedPassword = await bcrypt.hash(superAdminPassword, 10);
+        await prisma.user.update({
+            where: { username: superAdminUsername },
+            data: {
+                password: hashedPassword,
+                role: 'SUPER_ADMIN'
+            }
+        });
+        console.log(`✅ Super Admin credentials updated: ${superAdminUsername}`);
     }
 
     console.log('✨ Seeding complete!');

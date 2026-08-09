@@ -3,6 +3,8 @@ import { Role } from '../enums';
 import { hashPassword, comparePassword, generateToken } from '../utils/auth';
 import { prisma } from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
+import crypto from 'crypto';
+import { sendEmail } from '../utils/email';
 
 /**
  * Helper to format user response consistently
@@ -426,6 +428,113 @@ export const updateTourStatus = async (req: AuthRequest, res: Response) => {
         res.json({ success: true });
     } catch (e) {
         console.error('updateTourStatus error:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const forgotPassword = async (req: Request, res: Response) => {
+    try {
+        const { username } = req.body;
+        if (!username) {
+            return res.status(400).json({ error: 'Username or email is required' });
+        }
+
+        const user = await prisma.user.findFirst({
+            where: {
+                OR: [
+                    { username: username },
+                    { name: username }
+                ]
+            }
+        });
+
+        if (!user) {
+            return res.status(200).json({ message: 'If the account exists, a password reset link has been sent to your registered email.' });
+        }
+
+        const token = crypto.randomBytes(32).toString('hex');
+        const expiry = new Date(Date.now() + 3600000); // 1 hour expiry
+
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                resetToken: token,
+                resetTokenExpiry: expiry
+            }
+        });
+
+        const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+        const resetLink = `${clientUrl}/reset-password?token=${token}&email=${encodeURIComponent(user.username)}`;
+
+        const emailHtml = `
+            <div style="font-family: sans-serif; padding: 20px; color: #333;">
+                <h2>Password Reset Request</h2>
+                <p>Hello ${user.name || user.username},</p>
+                <p>We received a request to reset the password for your account.</p>
+                <p>Click the button below to reset your password. This link is valid for 1 hour.</p>
+                <div style="margin: 30px 0;">
+                    <a href="${resetLink}" style="background-color: #5c59f2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Reset Password</a>
+                </div>
+                <p>If you did not request this reset, you can safely ignore this email.</p>
+                <hr style="border: none; border-top: 1px border #eee; margin: 30px 0;" />
+                <p style="font-size: 11px; color: #888;">If you're having trouble clicking the button, copy and paste the URL below into your web browser:</p>
+                <p style="font-size: 11px; color: #888; word-break: break-all;">${resetLink}</p>
+            </div>
+        `;
+
+        try {
+            const targetEmail = user.username.includes('@') ? user.username : (process.env.AWS_FROM_EMAIL || 'admin@dochats.com');
+            await sendEmail(targetEmail, 'Password Reset Request', emailHtml);
+            console.log(`[Forgot Password] Sent reset email to: ${targetEmail}`);
+        } catch (err) {
+            console.error('[Forgot Password] Email send failed. Printing link to console:');
+            console.log(`[DEVELOPMENT RESCUE LINK] Reset link is: ${resetLink}`);
+        }
+
+        res.status(200).json({ message: 'If the account exists, a password reset link has been sent to your registered email.' });
+    } catch (e) {
+        console.error('forgotPassword error:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const resetPassword = async (req: Request, res: Response) => {
+    try {
+        const { username, token, newPassword } = req.body;
+        if (!username || !token || !newPassword) {
+            return res.status(400).json({ error: 'Missing required parameters' });
+        }
+
+        if (newPassword.length < 6) {
+            return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+        }
+
+        const user = await prisma.user.findUnique({
+            where: { username }
+        });
+
+        if (!user || user.resetToken !== token) {
+            return res.status(400).json({ error: 'Invalid or expired password reset token' });
+        }
+
+        if (user.resetTokenExpiry && user.resetTokenExpiry < new Date()) {
+            return res.status(400).json({ error: 'Password reset token has expired' });
+        }
+
+        const hashedPassword = await hashPassword(newPassword);
+
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                password: hashedPassword,
+                resetToken: null,
+                resetTokenExpiry: null
+            }
+        });
+
+        res.status(200).json({ message: 'Password reset successfully. You can now login.' });
+    } catch (e) {
+        console.error('resetPassword error:', e);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

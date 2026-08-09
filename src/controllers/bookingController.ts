@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { triggerAutomation } from '../utils/automation';
 import { generateCalendarLinks, generateIcsContent, generateMultiEventIcsFeed, parseIcsContent } from '../utils/calendar';
+import { APP_NAME, APP_NAME_LOWER } from '../utils/brand';
 
 export const getBookings = async (req: AuthRequest, res: Response) => {
     try {
@@ -119,7 +120,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
             description: notes || `Scheduled appointment for ${service} with ${clientName}.`,
             startTime: bookingDate,
             durationMinutes: durationMins,
-            location: meetingUrl ? 'Online Meeting' : 'DoConnect Meeting Hub',
+            location: meetingUrl ? 'Online Meeting' : `${APP_NAME} Meeting Hub`,
             meetingUrl: meetingUrl || undefined
         });
 
@@ -244,7 +245,7 @@ export const getIcsDownload = async (req: AuthRequest, res: Response) => {
             description: booking.notes || `Scheduled appointment for ${booking.service} with ${booking.clientName}.`,
             startTime: booking.date,
             durationMinutes: booking.duration,
-            location: booking.meetingUrl ? 'Online Video Meeting' : 'DoConnect Virtual Meeting',
+            location: booking.meetingUrl ? 'Online Video Meeting' : `${APP_NAME} Virtual Meeting`,
             meetingUrl: booking.meetingUrl || undefined
         });
 
@@ -338,14 +339,14 @@ export const getLiveCalendarFeed = async (req: Request, res: Response) => {
             description: b.notes || `Scheduled appointment for ${b.service} with ${b.clientName}.`,
             startTime: b.date,
             durationMinutes: b.duration || 60,
-            location: b.meetingUrl ? 'Online Video Meeting' : 'DoConnect Virtual Meeting',
+            location: b.meetingUrl ? 'Online Video Meeting' : `${APP_NAME} Virtual Meeting`,
             meetingUrl: b.meetingUrl || undefined
         }));
 
         const icsFeedString = generateMultiEventIcsFeed(eventParams);
 
         res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
-        res.setHeader('Content-Disposition', `attachment; filename="doconnect-feed-${userId}.ics"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${APP_NAME_LOWER}-feed-${userId}.ics"`);
         res.send(icsFeedString);
     } catch (error) {
         console.error('Error generating multi-calendar feed:', error);
@@ -419,7 +420,7 @@ export const importExternalCalendar = async (req: AuthRequest, res: Response) =>
             }
         }
 
-        res.json({ success: true, count, message: `Successfully synchronized ${count} external calendar events into DoConnect.` });
+        res.json({ success: true, count, message: `Successfully synchronized ${count} external calendar events into ${APP_NAME}.` });
     } catch (error: any) {
         console.error('Error importing external calendar:', error);
         res.status(500).json({ error: error?.message || 'Failed to import external calendar' });

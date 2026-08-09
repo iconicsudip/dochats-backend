@@ -136,6 +136,7 @@ export const getPaymentHistory = async (req: AuthRequest, res: Response) => {
 export const createPaymentOrder = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.user!.userId;
+        const { subscriptionId } = req.body;
 
         // Get user's subscription details
         const user = await prisma.user.findUnique({
@@ -144,52 +145,63 @@ export const createPaymentOrder = async (req: AuthRequest, res: Response) => {
         });
         if (!user) return res.status(404).json({ error: 'User not found' });
 
-        const amount = user.subscriptionAmount || 0;
-        const daysToExtend = getExtensionDays(user.billingCycle);
-
-        // Find the current/latest subscription
-        let currentSub = await prisma.subscription.findFirst({
-            where: { userId },
-            orderBy: { endDate: 'desc' },
-            include: { payment: true }
-        });
-
-        const now = new Date();
         let subscription: any;
+        let amount = user.subscriptionAmount || 0;
 
-        if (!currentSub || currentSub.payment?.status === 'PAID') {
-            // Create new subscription period
-            const startDate = now;
-            const endDate = new Date(now);
-            endDate.setDate(endDate.getDate() + daysToExtend);
-
-            subscription = await prisma.subscription.create({
-                data: {
-                    userId,
-                    startDate,
-                    endDate,
-                    amount,
-                    status: 'ACTIVE'
-                }
+        if (subscriptionId) {
+            subscription = await prisma.subscription.findFirst({
+                where: { id: subscriptionId },
+                include: { payment: true }
             });
-        } else if (currentSub.payment?.status === 'PENDING') {
-            // Re-use the existing pending subscription
-            subscription = currentSub;
+            if (!subscription) return res.status(404).json({ error: 'Subscription not found' });
+            if (subscription.userId !== userId) return res.status(403).json({ error: 'Forbidden' });
+            amount = subscription.amount;
         } else {
-            // Overdue/expired — create new one from today
-            const startDate = now;
-            const endDate = new Date(now);
-            endDate.setDate(endDate.getDate() + daysToExtend);
+            const daysToExtend = getExtensionDays(user.billingCycle);
 
-            subscription = await prisma.subscription.create({
-                data: {
-                    userId,
-                    startDate,
-                    endDate,
-                    amount,
-                    status: 'ACTIVE'
-                }
+            // Find the current/latest subscription
+            let currentSub = await prisma.subscription.findFirst({
+                where: { userId },
+                orderBy: { endDate: 'desc' },
+                include: { payment: true }
             });
+
+            const now = new Date();
+
+            if (!currentSub || currentSub.payment?.status === 'PAID') {
+                // Create new subscription period
+                const startDate = now;
+                const endDate = new Date(now);
+                endDate.setDate(endDate.getDate() + daysToExtend);
+
+                subscription = await prisma.subscription.create({
+                    data: {
+                        userId,
+                        startDate,
+                        endDate,
+                        amount,
+                        status: 'ACTIVE'
+                    }
+                });
+            } else if (currentSub.payment?.status === 'PENDING') {
+                // Re-use the existing pending subscription
+                subscription = currentSub;
+            } else {
+                // Overdue/expired — create new one from today
+                const startDate = now;
+                const endDate = new Date(now);
+                endDate.setDate(endDate.getDate() + daysToExtend);
+
+                subscription = await prisma.subscription.create({
+                    data: {
+                        userId,
+                        startDate,
+                        endDate,
+                        amount,
+                        status: 'ACTIVE'
+                    }
+                });
+            }
         }
 
         // Create Razorpay order

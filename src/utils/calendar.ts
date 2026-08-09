@@ -10,6 +10,8 @@ export function formatCalendarDate(date: Date): string {
     return date.toISOString().replace(/-|:|\.\d+/g, '');
 }
 
+import { APP_NAME, APP_NAME_LOWER } from "./brand";
+
 export interface CalendarEventParams {
     id: string;
     title: string;
@@ -74,11 +76,11 @@ export function generateIcsContent(event: CalendarEventParams): string {
     return [
         'BEGIN:VCALENDAR',
         'VERSION:2.0',
-        'PRODID:-//DoConnect//SaaS Booking Calendar Engine//EN',
+        `PRODID:-//${APP_NAME}//SaaS Booking Calendar Engine//EN`,
         'CALSCALE:GREGORIAN',
         'METHOD:PUBLISH',
         'BEGIN:VEVENT',
-        `UID:doconnect-booking-${event.id}@doconnect.ai`,
+        `UID:${APP_NAME_LOWER}-booking-${event.id}@${APP_NAME_LOWER}.ai`,
         `DTSTAMP:${nowFormatted}`,
         `DTSTART:${startFormatted}`,
         `DTEND:${endFormatted}`,
@@ -96,10 +98,10 @@ export function generateMultiEventIcsFeed(events: CalendarEventParams[]): string
     const lines = [
         'BEGIN:VCALENDAR',
         'VERSION:2.0',
-        'PRODID:-//DoConnect//SaaS Live Multi-Calendar Feed//EN',
+        `PRODID:-//${APP_NAME}//SaaS Live Multi-Calendar Feed//EN`,
         'CALSCALE:GREGORIAN',
         'METHOD:PUBLISH',
-        'X-WR-CALNAME:DoConnect Bookings Feed',
+        `X-WR-CALNAME:${APP_NAME} Bookings Feed`,
         'X-WR-TIMEZONE:UTC'
     ];
 
@@ -116,7 +118,7 @@ export function generateMultiEventIcsFeed(events: CalendarEventParams[]): string
 
         lines.push(
             'BEGIN:VEVENT',
-            `UID:doconnect-feed-${event.id}@doconnect.ai`,
+            `UID:${APP_NAME_LOWER}-feed-${event.id}@${APP_NAME_LOWER}.ai`,
             `DTSTAMP:${nowFormatted}`,
             `DTSTART:${startFormatted}`,
             `DTEND:${endFormatted}`,

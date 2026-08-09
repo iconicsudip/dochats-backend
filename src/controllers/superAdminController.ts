@@ -275,12 +275,12 @@ export const getSuperAdminStats = async (req: AuthRequest, res: Response) => {
 
 export const getAllPlans = async (req: AuthRequest, res: Response) => {
     try {
-        if (!req.user || (req.user.role !== Role.SUPER_ADMIN && req.user.role !== Role.ADMIN)) {
+        if (!req.user || (req.user.role !== Role.SUPER_ADMIN && req.user.role !== Role.ADMIN && req.user.role !== Role.SUB_USER)) {
             return res.status(403).json({ error: 'Forbidden' });
         }
 
         const plans = await prisma.plan.findMany({
-            where: req.user.role === Role.ADMIN ? { isPublic: true } : {},
+            where: (req.user.role === Role.ADMIN || req.user.role === Role.SUB_USER) ? { isPublic: true } : {},
             orderBy: { order: 'asc' }
         });
 
