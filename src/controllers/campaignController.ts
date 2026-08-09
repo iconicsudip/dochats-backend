@@ -96,38 +96,86 @@ export const sendCampaign = async (req: AuthRequest, res: Response) => {
             try {
                 const conversations = await getTargetConversations(ownerId, campaign.targetFilter);
                 const encryptedContent = encryptMessage(campaign.content);
+                const log: any[] = [];
 
                 for (const conv of conversations) {
-                    const message = await prisma.message.create({
-                        data: {
-                            conversationId: conv.id,
-                            content: encryptedContent,
-                            isFromAdmin: true,
-                            isRead: false
+                    try {
+                        const lead = await prisma.crmLead.findFirst({
+                            where: { ownerId, ...(conv.visitorPhone ? { phone: conv.visitorPhone } : {}) }
+                        });
+
+                        const message = await prisma.message.create({
+                            data: {
+                                conversationId: conv.id,
+                                content: encryptedContent,
+                                isFromAdmin: true,
+                                isRead: false
+                            }
+                        });
+
+                        await prisma.conversation.update({
+                            where: { id: conv.id },
+                            data: { lastMessageAt: new Date() }
+                        });
+
+                        const newMessage = {
+                            ...message,
+                            content: campaign.content,
+                            replyTo: null
+                        };
+
+                        broadcastMessage(conv.id, conv.linkId, conv.link.creatorId, newMessage);
+                        const formatted = await getFormattedConversation(conv.id);
+                        if (formatted) {
+                            broadcastConversationUpdate(formatted);
+                        }
+
+                        log.push({
+                            name: lead?.name || conv.visitorPhone || 'Unknown Visitor',
+                            phone: conv.visitorPhone || 'N/A',
+                            status: 'SENT',
+                            sentAt: new Date()
+                        });
+                    } catch (itemErr: any) {
+                        log.push({
+                            name: conv.visitorPhone || 'Unknown Visitor',
+                            phone: conv.visitorPhone || 'N/A',
+                            status: 'FAILED',
+                            error: itemErr.message || 'Failed to dispatch message'
+                        });
+                    }
+                }
+
+                // If filtering by a CRM status, identify leads without active conversations
+                const filters = campaign.targetFilter as any;
+                if (filters && filters.leadStatus && filters.leadStatus !== 'all') {
+                    const matchingLeads = await prisma.crmLead.findMany({
+                        where: {
+                            ownerId,
+                            status: filters.leadStatus
                         }
                     });
 
-                    await prisma.conversation.update({
-                        where: { id: conv.id },
-                        data: { lastMessageAt: new Date() }
-                    });
-
-                    const newMessage = {
-                        ...message,
-                        content: campaign.content,
-                        replyTo: null
-                    };
-
-                    broadcastMessage(conv.id, conv.linkId, conv.link.creatorId, newMessage);
-                    const formatted = await getFormattedConversation(conv.id);
-                    if (formatted) {
-                        broadcastConversationUpdate(formatted);
+                    for (const lead of matchingLeads) {
+                        const processed = log.some(item => item.phone === lead.phone);
+                        if (!processed) {
+                            log.push({
+                                name: lead.name || 'Unknown Lead',
+                                phone: lead.phone || 'N/A',
+                                status: 'FAILED',
+                                error: 'No active chat conversation'
+                            });
+                        }
                     }
                 }
 
                 await prisma.broadcastCampaign.update({
                     where: { id: campaign.id },
-                    data: { status: 'SENT', sentAt: new Date() }
+                    data: { 
+                        status: 'SENT', 
+                        sentAt: new Date(),
+                        recipientsLog: log
+                    }
                 });
             } catch (err) {
                 console.error('[sendCampaign bg error]:', err);

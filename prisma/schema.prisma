@@ -535,6 +535,7 @@ model BroadcastCampaign {
   status       CampaignStatus   @default(PENDING)
   creator      User             @relation("CreatedCampaigns", fields: [creatorId], references: [id])
   creatorId    String
+  recipientsLog Json?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
