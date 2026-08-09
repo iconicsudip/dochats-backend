@@ -4,11 +4,11 @@ import { AuthRequest } from '../middleware/auth';
 import { encryptMessage } from '../lib/encryption';
 import { broadcastMessage, getFormattedConversation, broadcastConversationUpdate } from '../utils/sse';
 
-const getTargetConversations = async (userId: string, filters: any) => {
+const getTargetConversations = async (ownerId: string, filters: any) => {
     const { linkId, leadStatus } = filters;
     
     let whereClause: any = {
-        link: { creatorId: userId }
+        link: { creatorId: ownerId }
     };
     
     if (linkId && linkId !== 'all') {
@@ -18,7 +18,7 @@ const getTargetConversations = async (userId: string, filters: any) => {
     if (leadStatus && leadStatus !== 'all') {
         const matchingLeads = await prisma.crmLead.findMany({
             where: {
-                ownerId: userId,
+                ownerId: ownerId,
                 status: leadStatus
             },
             select: { phone: true }
@@ -35,11 +35,11 @@ const getTargetConversations = async (userId: string, filters: any) => {
 
 export const getCampaigns = async (req: AuthRequest, res: Response) => {
     try {
-        const userId = req.user?.userId;
-        if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+        const ownerId = req.user?.parentId || req.user?.userId;
+        if (!ownerId) return res.status(401).json({ error: 'Unauthorized' });
 
         const campaigns = await prisma.broadcastCampaign.findMany({
-            where: { creatorId: userId },
+            where: { creatorId: ownerId },
             orderBy: { createdAt: 'desc' }
         });
 
@@ -52,8 +52,8 @@ export const getCampaigns = async (req: AuthRequest, res: Response) => {
 
 export const createCampaign = async (req: AuthRequest, res: Response) => {
     try {
-        const userId = req.user?.userId;
-        if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+        const ownerId = req.user?.parentId || req.user?.userId;
+        if (!ownerId) return res.status(401).json({ error: 'Unauthorized' });
 
         const { name, targetFilter, content, mediaUrl } = req.body;
         if (!name || !content) return res.status(400).json({ error: 'Missing name or content' });
@@ -65,7 +65,7 @@ export const createCampaign = async (req: AuthRequest, res: Response) => {
                 content,
                 mediaUrl: mediaUrl || null,
                 status: 'PENDING',
-                creatorId: userId
+                creatorId: ownerId
             }
         });
 
@@ -78,12 +78,12 @@ export const createCampaign = async (req: AuthRequest, res: Response) => {
 
 export const sendCampaign = async (req: AuthRequest, res: Response) => {
     try {
-        const userId = req.user?.userId;
-        if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+        const ownerId = req.user?.parentId || req.user?.userId;
+        if (!ownerId) return res.status(401).json({ error: 'Unauthorized' });
 
         const { id } = req.params;
         const campaign = await prisma.broadcastCampaign.findFirst({
-            where: { id, creatorId: userId }
+            where: { id, creatorId: ownerId }
         });
 
         if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
@@ -94,7 +94,7 @@ export const sendCampaign = async (req: AuthRequest, res: Response) => {
         // Background execution
         (async () => {
             try {
-                const conversations = await getTargetConversations(userId, campaign.targetFilter);
+                const conversations = await getTargetConversations(ownerId, campaign.targetFilter);
                 const encryptedContent = encryptMessage(campaign.content);
 
                 for (const conv of conversations) {
@@ -145,12 +145,12 @@ export const sendCampaign = async (req: AuthRequest, res: Response) => {
 
 export const deleteCampaign = async (req: AuthRequest, res: Response) => {
     try {
-        const userId = req.user?.userId;
-        if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+        const ownerId = req.user?.parentId || req.user?.userId;
+        if (!ownerId) return res.status(401).json({ error: 'Unauthorized' });
 
         const { id } = req.params;
         await prisma.broadcastCampaign.delete({
-            where: { id, creatorId: userId }
+            where: { id, creatorId: ownerId }
         });
 
         res.json({ success: true });
