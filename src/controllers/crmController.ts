@@ -17,12 +17,21 @@ export const getLeads = async (req: AuthRequest, res: Response) => {
     try {
         const ownerId = req.user?.parentId || req.user?.userId;
         const isSubUser = req.user?.role === 'SUB_USER';
-        const { page, limit, search, status } = req.query;
+        const { page, limit, search, status, brief } = req.query;
 
         // Sub-users only see leads explicitly assigned to them
         const where: any = { ownerId: ownerId! };
         if (isSubUser) {
             where.assignedTo = req.user!.userId;
+        }
+
+        if (brief === 'true') {
+            const leads = await prisma.crmLead.findMany({
+                where,
+                select: { id: true, name: true, email: true, phone: true },
+                orderBy: { name: 'asc' }
+            });
+            return res.json(leads);
         }
 
         if (search && typeof search === 'string') {
@@ -683,6 +692,30 @@ export const getLeadById = async (req: AuthRequest, res: Response) => {
         res.json(lead);
     } catch (error) {
         console.error('Error fetching lead by id:', error);
+        res.status(500).json({ error: 'Failed to fetch lead' });
+    }
+};
+
+export const getLeadByPhone = async (req: AuthRequest, res: Response) => {
+    try {
+        const { phone } = req.query;
+        const ownerId = req.user?.parentId || req.user?.userId;
+        if (!phone) return res.status(400).json({ error: 'Phone query parameter is required' });
+
+        const lead = await prisma.crmLead.findFirst({
+            where: { 
+                phone: phone as string,
+                ownerId: ownerId
+            }
+        });
+
+        if (!lead) {
+            return res.status(404).json({ error: 'Lead not found' });
+        }
+
+        res.json(lead);
+    } catch (error) {
+        console.error('Error fetching lead by phone:', error);
         res.status(500).json({ error: 'Failed to fetch lead' });
     }
 };

@@ -3,6 +3,8 @@ import { MessageType } from '../enums';
 import { encryptMessage, decryptMessage } from '../lib/encryption';
 import ogs from 'open-graph-scraper';
 import { prisma } from '../lib/prisma';
+import { broadcastMessage, broadcastMarkRead, broadcastConversationUpdate, getFormattedConversation } from '../utils/sse';
+import { detectSpamAndIntent, translateMessage, detectLanguage, suggestReply, summarizeChat } from '../utils/nvidia';
 
 const extractUrl = (text: string) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -91,20 +93,167 @@ export const sendMessage = async (req: Request, res: Response) => {
             include: { link: true }
         });
 
+        // 1. Welcome Chatbot Menu Options Parsing (Visitor only)
+        if (!isFromAdmin && updatedConv.link.menuOptions) {
+            try {
+                const options = updatedConv.link.menuOptions as any[];
+                if (options.length > 0) {
+                    const choice = options.find(o => 
+                        content.trim().toLowerCase() === o.key.toString().toLowerCase() ||
+                        content.trim().toLowerCase() === o.label.toLowerCase()
+                    );
+                    if (choice) {
+                        const botResponse = `You selected: ${choice.label}. How can we assist you with this?`;
+                        const encryptedBot = encryptMessage(botResponse);
+                        const botMsg = await prisma.message.create({
+                            data: {
+                                conversationId,
+                                content: encryptedBot,
+                                isFromAdmin: true,
+                                isRead: false
+                            }
+                        });
+                        const sseBotMsg = { ...botMsg, content: botResponse, replyTo: null };
+                        broadcastMessage(conversationId, updatedConv.linkId, updatedConv.link.creatorId, sseBotMsg);
+                    }
+                }
+            } catch (err) {
+                console.error('Welcome menu parsing error:', err);
+            }
+        }
+
+        // 2. Auto-Assignment Rules (Visitor only)
+        if (!isFromAdmin && !(updatedConv as any).assignedUserId && updatedConv.link.assignmentRule !== 'MANUAL') {
+            try {
+                const assignedUsers = await prisma.user.findMany({
+                    where: { assignedLinks: { some: { id: updatedConv.linkId } } }
+                });
+                if (assignedUsers.length > 0) {
+                    let targetAgentId = assignedUsers[0].id;
+                    if (updatedConv.link.assignmentRule === 'ROUND_ROBIN') {
+                        const totalConvs = await prisma.conversation.count({
+                            where: { linkId: updatedConv.linkId }
+                        });
+                        targetAgentId = assignedUsers[totalConvs % assignedUsers.length].id;
+                    } else if (updatedConv.link.assignmentRule === 'LEAST_BUSY') {
+                        const agentsWithCounts = await Promise.all(assignedUsers.map(async (u) => {
+                            const count = await prisma.conversation.count({
+                                where: { assignedUserId: u.id }
+                            });
+                            return { id: u.id, count };
+                        }));
+                        agentsWithCounts.sort((a, b) => a.count - b.count);
+                        targetAgentId = agentsWithCounts[0].id;
+                    }
+                    await prisma.conversation.update({
+                        where: { id: conversationId },
+                        data: { assignedUserId: targetAgentId }
+                    });
+                    (updatedConv as any).assignedUserId = targetAgentId;
+                }
+            } catch (err) {
+                console.error('Auto assignment error:', err);
+            }
+        }
+
         // Decrypt reply for sockets if applicable
         let decryptedReplyContent = (message as any).replyTo?.content;
         if ((message as any).replyTo?.content) {
             try { decryptedReplyContent = decryptMessage((message as any).replyTo.content); } catch (e) { }
         }
 
-        const newMessage = {
+        const newMessage: any = {
             ...message,
             content,
             tempId,
             replyTo: (message as any).replyTo ? { ...(message as any).replyTo, content: decryptedReplyContent } : null
         };
 
-        // Real-time Push (removed)
+        // Real-time Push
+        broadcastMessage(conversationId, updatedConv.linkId, updatedConv.link.creatorId, newMessage);
+        getFormattedConversation(conversationId).then(formatted => {
+            if (formatted) {
+                broadcastConversationUpdate(formatted);
+            }
+        }).catch(err => console.error('Error broadcasting conversation update on sendMessage:', err));
+
+        // 3. NVIDIA AI Insights & Auto-Translation Background Job
+        if (!isFromAdmin) {
+            (async () => {
+                try {
+                    // Fetch context messages for summary
+                    const messagesForSummary = await prisma.message.findMany({
+                        where: { conversationId },
+                        take: 10,
+                        orderBy: { createdAt: 'asc' }
+                    });
+                    const formattedContext = messagesForSummary.map(m => {
+                        let dec = m.content;
+                        try { dec = decryptMessage(m.content); } catch (e) {}
+                        return { role: (m.isFromAdmin ? 'assistant' : 'user') as 'assistant' | 'user', content: dec };
+                    });
+
+                    // Run AI operations in parallel to optimize response time
+                    const [lang, aiResult, summary] = await Promise.all([
+                        detectLanguage(content).catch(() => null),
+                        detectSpamAndIntent(content).catch(() => null),
+                        summarizeChat(formattedContext).catch(() => null)
+                    ]);
+
+                    // If language is foreign, auto-translate asynchronously
+                    if (lang && lang.toLowerCase() !== 'english') {
+                        translateMessage(content, 'English').then(async (trans) => {
+                            if (trans) {
+                                await prisma.message.update({
+                                    where: { id: message.id },
+                                    data: { linkPreview: { ...(message.linkPreview as any || {}), translation: trans } }
+                                });
+                                newMessage.translation = trans;
+                                broadcastMessage(conversationId, updatedConv.linkId, updatedConv.link.creatorId, newMessage);
+                            }
+                        }).catch(err => console.error('[NVIDIA BG Translate] error:', err));
+                    }
+
+                    // CRM update
+                    if (updatedConv.visitorPhone) {
+                        const lead = await prisma.crmLead.findFirst({
+                            where: { phone: updatedConv.visitorPhone, ownerId: updatedConv.link.creatorId }
+                        });
+                        if (lead) {
+                            await prisma.crmLead.update({
+                                where: { id: lead.id },
+                                data: {
+                                    status: aiResult?.spam ? 'LOST' : undefined,
+                                    aiSummary: summary || lead.aiSummary,
+                                    aiInsights: {
+                                        sentiment: aiResult?.sentiment || 'neutral',
+                                        intent: aiResult?.intent || 'other',
+                                        spam: !!aiResult?.spam
+                                    }
+                                }
+                            });
+                        } else {
+                            await prisma.crmLead.create({
+                                data: {
+                                    ownerId: updatedConv.link.creatorId,
+                                    name: updatedConv.visitorName || 'Visitor',
+                                    phone: updatedConv.visitorPhone,
+                                    status: aiResult?.spam ? 'LOST' : 'NEW',
+                                    aiSummary: summary || 'No summary yet',
+                                    aiInsights: {
+                                        sentiment: aiResult?.sentiment || 'neutral',
+                                        intent: aiResult?.intent || 'other',
+                                        spam: !!aiResult?.spam
+                                    }
+                                }
+                            });
+                        }
+                    }
+                } catch (err) {
+                    console.error('[NVIDIA AI BG Job] error:', err);
+                }
+            })();
+        }
 
         res.status(201).json(newMessage);
     } catch (e: any) {
@@ -127,11 +276,46 @@ export const markRead = async (req: Request, res: Response) => {
             data: { isRead: true }
         });
 
-        // Real-time notification removed
+        // Real-time notification
+        prisma.conversation.findUnique({
+            where: { id: conversationId },
+            include: { link: true }
+        }).then(async (conversation) => {
+            if (conversation) {
+                broadcastMarkRead(conversationId, conversation.linkId, conversation.link.creatorId, isAdmin);
+                const formatted = await getFormattedConversation(conversationId);
+                if (formatted) {
+                    broadcastConversationUpdate(formatted);
+                }
+            }
+        }).catch(err => console.error('Error broadcasting markRead:', err));
 
         res.json({ success: true, count: updateResult.count });
     } catch (e) {
         console.error('markRead error:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getSuggestedReply = async (req: Request, res: Response) => {
+    try {
+        const { conversationId } = req.params;
+        const messages = await prisma.message.findMany({
+            where: { conversationId },
+            take: 15,
+            orderBy: { createdAt: 'asc' }
+        });
+
+        const formattedContext = messages.map(m => {
+            let dec = m.content;
+            try { dec = decryptMessage(m.content); } catch (e) {}
+            return { role: (m.isFromAdmin ? 'assistant' : 'user') as 'assistant' | 'user', content: dec };
+        });
+
+        const suggestion = await suggestReply(formattedContext);
+        res.json({ suggestion });
+    } catch (err) {
+        console.error('getSuggestedReply error:', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

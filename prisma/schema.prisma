@@ -46,6 +46,8 @@ model User {
   ownedChatGroups ChatGroup[]          @relation("OwnedChatGroups")
   chatGroupMemberships ChatGroupMember[]
   groupMessages   GroupMessage[]       @relation("SentGroupMessages")
+  createdCampaigns     BroadcastCampaign[]  @relation("CreatedCampaigns")
+  assignedConversations Conversation[]      @relation("AssignedConversations")
 
   whatsappConfig      Json?        // { apiKey: string, phoneNumberId: string, businessAccountId: string }
   emailConfig         Json?        // { fromEmail: string, fromName: string }
@@ -118,6 +120,8 @@ model ShortLink {
   whatsappThreshold Int            @default(5)
   leadCaptureFormId String?
   leadCaptureDelay  Int            @default(3)
+  menuOptions       Json?          @default("[]")
+  assignmentRule    String         @default("MANUAL")
   creator           User           @relation("CreatedLinks", fields: [creatorId], references: [id])
   creatorId         String
   assignedUsers     User[]         @relation("AssignedLinks")
@@ -142,12 +146,17 @@ model Conversation {
   noReplyTriggered  Boolean   @default(false)
   lastMessageAt     DateTime  @default(now())
   createdAt         DateTime  @default(now())
+  assignedUserId    String?
+  assignedUser      User?     @relation("AssignedConversations", fields: [assignedUserId], references: [id])
+  isPinned          Boolean   @default(false)
+  isArchived        Boolean   @default(false)
 
   @@index([linkId], name: "idx_conversation_linkId")
   @@index([lastMessageAt], name: "idx_conversation_lastMessageAt")
   @@index([linkId, visitorToken], name: "idx_conversation_linkId_visitorToken")
   @@index([visitorToken], name: "idx_conversation_visitorToken")
   @@index([linkId, lastMessageAt], name: "idx_conversation_link_lastMsg")
+  @@index([assignedUserId], name: "idx_conversation_assignedUserId")
 }
 
 model Message {
@@ -511,5 +520,29 @@ model EmailTemplate {
 
   @@index([ownerId])
   @@index([sesSynced])
+}
+
+model BroadcastCampaign {
+  id           String           @id @default(cuid())
+  name         String
+  targetFilter Json             // filters like tags, leadStatus, country
+  content      String           @db.Text
+  mediaUrl     String?          @db.Text
+  scheduledAt  DateTime?
+  sentAt       DateTime?
+  status       CampaignStatus   @default(PENDING)
+  creator      User             @relation("CreatedCampaigns", fields: [creatorId], references: [id])
+  creatorId    String
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([creatorId])
+  @@index([status])
+}
+
+enum CampaignStatus {
+  PENDING
+  SENT
+  FAILED
 }
 

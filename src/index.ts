@@ -19,6 +19,8 @@ import analyticsRoutes from './routes/analytics';
 import formRoutes from './routes/form';
 import emailRoutes from './routes/email';
 import chatGroupRoutes from './routes/chatGroups';
+import realtimeRoutes from './routes/realtime';
+import campaignRoutes from './routes/campaigns';
 
 import { initCron } from './utils/cron';
 
@@ -40,9 +42,11 @@ app.use('/api/links', linkRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/public', publicRoutes);
+app.use('/api/realtime', realtimeRoutes);
 app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/crm', crmRoutes);
+app.use('/api/campaigns', campaignRoutes);
 app.use('/api/bookings', bookingsRoutes);
 app.use('/api/automation', automationRoutes);
 app.use('/api/whatsapp', whatsappRoutes);

@@ -79,7 +79,9 @@ export const getConversations = async (req: AuthRequest, res: Response) => {
                 lastMessageType,
                 lastMessageAt: c.lastMessageAt,
                 unreadCount,
-                createdAt: c.createdAt
+                createdAt: c.createdAt,
+                isPinned: !!c.isPinned,
+                isArchived: !!c.isArchived
             };
         });
 
@@ -136,6 +138,59 @@ export const downloadLeads = async (req: AuthRequest, res: Response) => {
         res.json(leads);
     } catch (e) {
         console.error('[downloadLeads Error]:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const togglePinConversation = async (req: AuthRequest, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { isPinned } = req.body;
+
+        const conversation = await prisma.conversation.update({
+            where: { id },
+            data: { isPinned: !!isPinned }
+        });
+
+        res.json(conversation);
+    } catch (err) {
+        console.error('togglePinConversation error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const toggleArchiveConversation = async (req: AuthRequest, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { isArchived } = req.body;
+
+        const conversation = await prisma.conversation.update({
+            where: { id },
+            data: { isArchived: !!isArchived }
+        });
+
+        res.json(conversation);
+    } catch (err) {
+        console.error('toggleArchiveConversation error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const deleteConversation = async (req: AuthRequest, res: Response) => {
+    try {
+        const { id } = req.params;
+
+        await prisma.message.deleteMany({
+            where: { conversationId: id }
+        });
+
+        await prisma.conversation.delete({
+            where: { id }
+        });
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error('deleteConversation error:', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 };

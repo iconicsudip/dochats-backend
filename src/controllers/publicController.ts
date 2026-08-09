@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import ogs from 'open-graph-scraper';
+import { broadcastConversationUpdate, getFormattedConversation, isAgentOnline } from '../utils/sse';
 
 export const initPublicChat = async (req: Request, res: Response) => {
     try {
@@ -52,6 +53,8 @@ export const initPublicChat = async (req: Request, res: Response) => {
             }
         });
 
+        let didCreateOrUpdate = false;
+
         if (!conversation) {
             conversation = await prisma.conversation.create({
                 data: {
@@ -61,6 +64,7 @@ export const initPublicChat = async (req: Request, res: Response) => {
                     visitorPhone: visitorPhone || null
                 }
             });
+            didCreateOrUpdate = true;
         } else if ((visitorName && visitorName !== conversation.visitorName) || (visitorPhone && visitorPhone !== conversation.visitorPhone)) {
             // Update existing if name/phone has changed or wasn't captured before (e.g. tracking tag appended)
             conversation = await prisma.conversation.update({
@@ -70,7 +74,18 @@ export const initPublicChat = async (req: Request, res: Response) => {
                     visitorPhone: visitorPhone || conversation.visitorPhone
                 }
             });
+            didCreateOrUpdate = true;
         }
+
+        if (didCreateOrUpdate) {
+            getFormattedConversation(conversation.id).then(formatted => {
+                if (formatted) {
+                    broadcastConversationUpdate(formatted);
+                }
+            }).catch(err => console.error('Error broadcasting conversation update on init:', err));
+        }
+
+        const isOnline = isAgentOnline(link.id, link.creatorId);
 
         res.json({
             conversationId: conversation.id,
@@ -83,7 +98,9 @@ export const initPublicChat = async (req: Request, res: Response) => {
             visitorName: conversation.visitorName,
             visitorPhone: conversation.visitorPhone,
             leadCaptureFormId: link.leadCaptureFormId,
-            leadCaptureDelay: link.leadCaptureDelay
+            leadCaptureDelay: link.leadCaptureDelay,
+            menuOptions: link.menuOptions || [],
+            isOnline
         });
     } catch (e) {
         console.error('initPublicChat error:', e);

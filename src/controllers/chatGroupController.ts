@@ -3,6 +3,7 @@ import { MessageType } from '../enums';
 import { encryptMessage, decryptMessage } from '../lib/encryption';
 import { prisma } from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
+import { broadcastGroupMessage } from '../utils/sse';
 import ogs from 'open-graph-scraper';
 
 const getWorkspaceOwnerId = (req: AuthRequest) => req.user?.parentId || req.user?.userId;
@@ -366,7 +367,7 @@ export const sendGroupMessage = async (req: AuthRequest, res: Response) => {
             try { replyContent = decryptMessage(message.replyTo.content); } catch { }
         }
 
-        res.status(201).json({
+        const responseData = {
             ...message,
             content: textContent,
             tempId,
@@ -374,7 +375,11 @@ export const sendGroupMessage = async (req: AuthRequest, res: Response) => {
             replyTo: message.replyTo
                 ? { ...message.replyTo, content: replyContent }
                 : null
-        });
+        };
+
+        broadcastGroupMessage(groupId, responseData);
+
+        res.status(201).json(responseData);
     } catch (e) {
         console.error('sendGroupMessage error:', e);
         res.status(500).json({ error: 'Internal server error' });
