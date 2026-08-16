@@ -113,7 +113,8 @@ export const updateLink = async (req: AuthRequest, res: Response) => {
                 whatsappThreshold: whatsappThreshold !== undefined ? Number(whatsappThreshold) : undefined,
                 leadCaptureFormId: leadCaptureFormId || null,
                 leadCaptureDelay: leadCaptureDelay !== undefined ? Number(leadCaptureDelay) : undefined,
-                whatsappOnFormSubmit: whatsappOnFormSubmit !== undefined ? Boolean(whatsappOnFormSubmit) : undefined
+                whatsappOnFormSubmit: whatsappOnFormSubmit !== undefined ? Boolean(whatsappOnFormSubmit) : undefined,
+                chatBackgroundImage
             }
         });
         res.json(updated);
