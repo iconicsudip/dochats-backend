@@ -124,6 +124,7 @@ model ShortLink {
   leadCaptureDelay  Int            @default(3)
   whatsappOnFormSubmit Boolean     @default(false)
   chatBackgroundImage String?
+  chatDesign          Json?         // { headerBackground, chatBackground, inputBackground, adminBubbleBackground, visitorBubbleBackground }
   menuOptions       Json?          @default("[]")
   assignmentRule    String         @default("MANUAL")
   creator           User           @relation("CreatedLinks", fields: [creatorId], references: [id])
