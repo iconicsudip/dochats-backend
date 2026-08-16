@@ -96,6 +96,9 @@ export const getLeads = async (req: AuthRequest, res: Response) => {
 
 export const createLead = async (req: AuthRequest, res: Response) => {
     try {
+        if (req.user?.role === 'SUB_USER') {
+            return res.status(403).json({ error: 'Sub-users cannot create leads' });
+        }
         const ownerId = req.user?.parentId || req.user?.userId;
         const { 
             name, phone, email, industry, source, value, notes, assignedTo,
@@ -205,6 +208,11 @@ export const updateLead = async (req: AuthRequest, res: Response) => {
     try {
         const ownerId = req.user?.parentId || req.user?.userId;
         const isSubUser = req.user?.role === 'SUB_USER';
+        
+        if (isSubUser) {
+            return res.status(403).json({ error: 'Sub-users cannot edit lead details' });
+        }
+
         const { id } = req.params;
         const updateData = req.body;
 
@@ -246,6 +254,11 @@ export const deleteLeads = async (req: AuthRequest, res: Response) => {
     try {
         const ownerId = req.user?.parentId || req.user?.userId;
         const isSubUser = req.user?.role === 'SUB_USER';
+        
+        if (isSubUser) {
+            return res.status(403).json({ error: 'Sub-users cannot delete leads' });
+        }
+
         const { ids } = req.query; // ?ids=id1,id2
         if (!ids || typeof ids !== 'string') {
             return res.status(400).json({ error: 'No lead IDs provided' });
@@ -274,6 +287,9 @@ export const deleteLeads = async (req: AuthRequest, res: Response) => {
 
 export const bulkCreateLeads = async (req: AuthRequest, res: Response) => {
     try {
+        if (req.user?.role === 'SUB_USER') {
+            return res.status(403).json({ error: 'Sub-users cannot bulk create leads' });
+        }
         const ownerId = req.user?.parentId || req.user?.userId;
         const { leads } = req.body;
         if (!Array.isArray(leads) || leads.length === 0) {

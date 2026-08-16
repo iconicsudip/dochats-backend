@@ -5,7 +5,7 @@ import { broadcastConversationUpdate, getFormattedConversation, isAgentOnline } 
 
 export const initPublicChat = async (req: Request, res: Response) => {
     try {
-        const { slug, visitorToken, visitorName, visitorPhone } = req.body;
+        const { slug, visitorToken, visitorName, visitorPhone, visitorEmail } = req.body;
         if (!slug || !visitorToken) {
             return res.status(400).json({ error: 'Missing slug or visitorToken' });
         }
@@ -61,17 +61,19 @@ export const initPublicChat = async (req: Request, res: Response) => {
                     linkId: link.id,
                     visitorToken: visitorToken,
                     visitorName: visitorName || null,
-                    visitorPhone: visitorPhone || null
+                    visitorPhone: visitorPhone || null,
+                    visitorEmail: visitorEmail || null
                 }
             });
             didCreateOrUpdate = true;
-        } else if ((visitorName && visitorName !== conversation.visitorName) || (visitorPhone && visitorPhone !== conversation.visitorPhone)) {
-            // Update existing if name/phone has changed or wasn't captured before (e.g. tracking tag appended)
+        } else if ((visitorName && visitorName !== conversation.visitorName) || (visitorPhone && visitorPhone !== conversation.visitorPhone) || (visitorEmail && visitorEmail !== conversation.visitorEmail)) {
+            // Update existing if name/phone/email has changed or wasn't captured before (e.g. tracking tag appended)
             conversation = await prisma.conversation.update({
                 where: { id: conversation.id },
                 data: {
                     visitorName: visitorName || conversation.visitorName,
-                    visitorPhone: visitorPhone || conversation.visitorPhone
+                    visitorPhone: visitorPhone || conversation.visitorPhone,
+                    visitorEmail: visitorEmail || conversation.visitorEmail
                 }
             });
             didCreateOrUpdate = true;
@@ -97,6 +99,7 @@ export const initPublicChat = async (req: Request, res: Response) => {
             whatsappThreshold: link.whatsappThreshold,
             visitorName: conversation.visitorName,
             visitorPhone: conversation.visitorPhone,
+            visitorEmail: conversation.visitorEmail,
             leadCaptureFormId: link.leadCaptureFormId,
             leadCaptureDelay: link.leadCaptureDelay,
             menuOptions: link.menuOptions || [],

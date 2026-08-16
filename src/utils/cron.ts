@@ -50,6 +50,7 @@ export const initCron = () => {
                         conversationId: conv.id,
                         visitorName: conv.visitorName || 'Visitor',
                         visitorPhone: conv.visitorPhone,
+                        visitorEmail: conv.visitorEmail,
                         lastMessage: lastMsg.content
                     });
 

@@ -141,6 +141,7 @@ model Conversation {
   visitorToken  String // A unique token for the visitor session
   visitorName   String?
   visitorPhone  String?
+  visitorEmail  String?
   link          ShortLink @relation(fields: [linkId], references: [id])
   linkId        String
   messages      Message[]

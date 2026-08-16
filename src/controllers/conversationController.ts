@@ -75,6 +75,7 @@ export const getConversations = async (req: AuthRequest, res: Response) => {
                 visitorToken: (c.visitorToken || '').substring(0, 8),
                 visitorName: c.visitorName || 'Anonymous',
                 visitorPhone: c.visitorPhone || 'N/A',
+                visitorEmail: c.visitorEmail || 'N/A',
                 lastMessage,
                 lastMessageType,
                 lastMessageAt: c.lastMessageAt,
@@ -113,11 +114,11 @@ export const downloadLeads = async (req: AuthRequest, res: Response) => {
         const whereClause = user.role === Role.SUB_USER
             ? {
                 linkId: { in: user.assignedLinks.map(l => l.id) },
-                OR: [{ visitorName: { not: null } }, { visitorPhone: { not: null } }]
+                OR: [{ visitorName: { not: null } }, { visitorPhone: { not: null } }, { visitorEmail: { not: null } }]
             }
             : {
                 link: { creatorId: userId },
-                OR: [{ visitorName: { not: null } }, { visitorPhone: { not: null } }]
+                OR: [{ visitorName: { not: null } }, { visitorPhone: { not: null } }, { visitorEmail: { not: null } }]
             };
 
         const conversations = await prisma.conversation.findMany({
@@ -131,6 +132,7 @@ export const downloadLeads = async (req: AuthRequest, res: Response) => {
         const leads = conversations.map(c => ({
             name: c.visitorName || 'Anonymous',
             phone: c.visitorPhone || 'N/A',
+            email: c.visitorEmail || 'N/A',
             link: c.link.title,
             date: c.createdAt
         }));
@@ -179,6 +181,11 @@ export const toggleArchiveConversation = async (req: AuthRequest, res: Response)
 export const deleteConversation = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
+        const user = await prisma.user.findUnique({ where: { id: req.user?.userId } });
+
+        if (user?.role === Role.SUB_USER) {
+            return res.status(403).json({ error: 'Sub-users are not permitted to delete conversations' });
+        }
 
         await prisma.message.deleteMany({
             where: { conversationId: id }

@@ -214,15 +214,22 @@ export const sendMessage = async (req: Request, res: Response) => {
                         }).catch(err => console.error('[NVIDIA BG Translate] error:', err));
                     }
 
-                    // CRM update
-                    if (updatedConv.visitorPhone) {
+                    if (updatedConv.visitorPhone || updatedConv.visitorEmail) {
                         const lead = await prisma.crmLead.findFirst({
-                            where: { phone: updatedConv.visitorPhone, ownerId: updatedConv.link.creatorId }
+                            where: { 
+                                OR: [
+                                    { phone: updatedConv.visitorPhone || '' },
+                                    { email: updatedConv.visitorEmail || '' }
+                                ],
+                                ownerId: updatedConv.link.creatorId 
+                            }
                         });
                         if (lead) {
                             await prisma.crmLead.update({
                                 where: { id: lead.id },
                                 data: {
+                                    email: updatedConv.visitorEmail || lead.email,
+                                    phone: updatedConv.visitorPhone || lead.phone,
                                     status: aiResult?.spam ? 'LOST' : undefined,
                                     aiSummary: summary || lead.aiSummary,
                                     aiInsights: {
@@ -237,7 +244,8 @@ export const sendMessage = async (req: Request, res: Response) => {
                                 data: {
                                     ownerId: updatedConv.link.creatorId,
                                     name: updatedConv.visitorName || 'Visitor',
-                                    phone: updatedConv.visitorPhone,
+                                    phone: updatedConv.visitorPhone || 'N/A',
+                                    email: updatedConv.visitorEmail || null,
                                     status: aiResult?.spam ? 'LOST' : 'NEW',
                                     aiSummary: summary || 'No summary yet',
                                     aiInsights: {

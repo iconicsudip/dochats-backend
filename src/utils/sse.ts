@@ -196,6 +196,7 @@ export const getFormattedConversation = async (conversationId: string) => {
             visitorToken: (conv.visitorToken || '').substring(0, 8),
             visitorName: conv.visitorName || 'Anonymous',
             visitorPhone: conv.visitorPhone || 'N/A',
+            visitorEmail: conv.visitorEmail || 'N/A',
             lastMessage,
             lastMessageType,
             lastMessageAt: conv.lastMessageAt,
