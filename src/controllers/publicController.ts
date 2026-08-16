@@ -102,6 +102,7 @@ export const initPublicChat = async (req: Request, res: Response) => {
             visitorEmail: conversation.visitorEmail,
             leadCaptureFormId: link.leadCaptureFormId,
             leadCaptureDelay: link.leadCaptureDelay,
+            whatsappOnFormSubmit: link.whatsappOnFormSubmit,
             menuOptions: link.menuOptions || [],
             isOnline
         });

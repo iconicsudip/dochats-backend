@@ -122,6 +122,7 @@ model ShortLink {
   whatsappThreshold Int            @default(5)
   leadCaptureFormId String?
   leadCaptureDelay  Int            @default(3)
+  whatsappOnFormSubmit Boolean     @default(false)
   menuOptions       Json?          @default("[]")
   assignmentRule    String         @default("MANUAL")
   creator           User           @relation("CreatedLinks", fields: [creatorId], references: [id])
