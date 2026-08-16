@@ -125,7 +125,8 @@ model ShortLink {
   whatsappOnFormSubmit Boolean     @default(false)
   chatBackgroundImage String?
   chatDesign          Json?         // { headerBackground, chatBackground, inputBackground, adminBubbleBackground, visitorBubbleBackground }
-  menuOptions       Json?          @default("[]")
+  trackingPixels      Json?         // { facebook, googleAnalytics, tiktok, customScripts }
+  menuOptions         Json?         @default("[]")
   assignmentRule    String         @default("MANUAL")
   creator           User           @relation("CreatedLinks", fields: [creatorId], references: [id])
   creatorId         String
