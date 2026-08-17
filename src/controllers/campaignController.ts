@@ -4,6 +4,7 @@ import { AuthRequest } from '../middleware/auth';
 import { encryptMessage } from '../lib/encryption';
 import { broadcastMessage, getFormattedConversation, broadcastConversationUpdate } from '../utils/sse';
 import webpush from 'web-push';
+import crypto from 'crypto';
 
 if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
     const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:support@madmarketer.com';
@@ -190,14 +191,58 @@ export const sendCampaign = async (req: AuthRequest, res: Response) => {
                         }
                     });
 
+                    // Get a default link to attach new conversations to
+                    const defaultLink = await prisma.shortLink.findFirst({
+                        where: { creatorId: ownerId }
+                    });
+
                     for (const lead of matchingLeads) {
                         const processed = log.some(item => item.phone === lead.phone);
                         if (!processed) {
+                            if (!defaultLink) {
+                                log.push({
+                                    name: lead.name || 'Unknown Lead',
+                                    phone: lead.phone || 'N/A',
+                                    status: 'FAILED',
+                                    error: 'No active chat conversation and no links found'
+                                });
+                                continue;
+                            }
+
+                            // Create a new conversation for this lead
+                            const visitorToken = crypto.randomBytes(16).toString('hex');
+                            const newConv = await prisma.conversation.create({
+                                data: {
+                                    visitorToken,
+                                    visitorName: lead.name,
+                                    visitorPhone: lead.phone,
+                                    visitorEmail: lead.email,
+                                    linkId: defaultLink.id,
+                                    lastMessageAt: new Date()
+                                }
+                            });
+
+                            // Add the campaign message to this new conversation
+                            const message = await prisma.message.create({
+                                data: {
+                                    conversationId: newConv.id,
+                                    content: encryptedContent,
+                                    isFromAdmin: true,
+                                    isRead: false
+                                }
+                            });
+
+                            // Broadcast the new conversation to the dashboard
+                            const formatted = await getFormattedConversation(newConv.id);
+                            if (formatted) {
+                                broadcastConversationUpdate(formatted);
+                            }
+
                             log.push({
                                 name: lead.name || 'Unknown Lead',
                                 phone: lead.phone || 'N/A',
-                                status: 'FAILED',
-                                error: 'No active chat conversation'
+                                status: 'SENT',
+                                sentAt: new Date()
                             });
                         }
                     }

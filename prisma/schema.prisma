@@ -32,30 +32,30 @@ model User {
   parent   User?   @relation("SubUsers", fields: [parentId], references: [id])
   subUsers User[]  @relation("SubUsers")
 
-  links           ShortLink[]          @relation("CreatedLinks")
-  assignedLinks   ShortLink[]          @relation("AssignedLinks")
-  subscriptions   Subscription[]
-  upgradeRequests PlanUpgradeRequest[]
-  crmLeads        CrmLead[]            @relation("OwnedLeads")
-  bookings        Booking[]            @relation("OwnedBookings")
-  automationRules AutomationRule[]     @relation("OwnedRules")
-  emailTemplates  EmailTemplate[]      @relation("OwnedEmailTemplates")
-  forms           CustomForm[]         @relation("OwnedForms")
-  moduleConfig    AdminModuleConfig?   @relation("ModuleConfig")
-  notifications   Notification[]
-  ownedChatGroups ChatGroup[]          @relation("OwnedChatGroups")
-  chatGroupMemberships ChatGroupMember[]
-  groupMessages   GroupMessage[]       @relation("SentGroupMessages")
-  createdCampaigns     BroadcastCampaign[]  @relation("CreatedCampaigns")
-  assignedConversations Conversation[]      @relation("AssignedConversations")
+  links                 ShortLink[]          @relation("CreatedLinks")
+  assignedLinks         ShortLink[]          @relation("AssignedLinks")
+  subscriptions         Subscription[]
+  upgradeRequests       PlanUpgradeRequest[]
+  crmLeads              CrmLead[]            @relation("OwnedLeads")
+  bookings              Booking[]            @relation("OwnedBookings")
+  automationRules       AutomationRule[]     @relation("OwnedRules")
+  emailTemplates        EmailTemplate[]      @relation("OwnedEmailTemplates")
+  forms                 CustomForm[]         @relation("OwnedForms")
+  moduleConfig          AdminModuleConfig?   @relation("ModuleConfig")
+  notifications         Notification[]
+  ownedChatGroups       ChatGroup[]          @relation("OwnedChatGroups")
+  chatGroupMemberships  ChatGroupMember[]
+  groupMessages         GroupMessage[]       @relation("SentGroupMessages")
+  createdCampaigns      BroadcastCampaign[]  @relation("CreatedCampaigns")
+  assignedConversations Conversation[]       @relation("AssignedConversations")
 
-  whatsappConfig      Json?        // { apiKey: string, phoneNumberId: string, businessAccountId: string }
-  emailConfig         Json?        // { fromEmail: string, fromName: string }
-  calendarConfig      Json?        // { googleCalendar: { enabled, account, syncToken }, outlook: { enabled, account }, apple: { enabled }, autoGenerateMeet: boolean }
-  resetToken          String?      @db.Text
-  resetTokenExpiry    DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  whatsappConfig   Json? // { apiKey: string, phoneNumberId: string, businessAccountId: string }
+  emailConfig      Json? // { fromEmail: string, fromName: string }
+  calendarConfig   Json? // { googleCalendar: { enabled, account, syncToken }, outlook: { enabled, account }, apple: { enabled }, autoGenerateMeet: boolean }
+  resetToken       String?   @db.Text
+  resetTokenExpiry DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@index([parentId], name: "idx_user_parentId")
   @@index([role], name: "idx_user_role")
@@ -63,23 +63,23 @@ model User {
 }
 
 model Plan {
-  id                 String               @id @default(cuid())
-  name               String               @unique
-  monthlyPrice       Int                  @default(0)
-  yearlyPrice        Int                  @default(0)
-  order              Int                  @default(0)
-  subUsersLimit      Int                  @default(3)
-  linksLimit         Int                  @default(5)
-  pricePerLinkMonthly Int                 @default(0)
-  pricePerLinkYearly  Int                 @default(0)
-  leadCaptureEnabled Boolean              @default(false)
-  isPublic           Boolean              @default(true)
-  description        String?
-  enabledModules     Json?                // predefined Module[] for the plan
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-  users              User[]
-  upgradeRequests    PlanUpgradeRequest[]
+  id                  String               @id @default(cuid())
+  name                String               @unique
+  monthlyPrice        Int                  @default(0)
+  yearlyPrice         Int                  @default(0)
+  order               Int                  @default(0)
+  subUsersLimit       Int                  @default(3)
+  linksLimit          Int                  @default(5)
+  pricePerLinkMonthly Int                  @default(0)
+  pricePerLinkYearly  Int                  @default(0)
+  leadCaptureEnabled  Boolean              @default(false)
+  isPublic            Boolean              @default(true)
+  description         String?
+  enabledModules      Json? // predefined Module[] for the plan
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  users               User[]
+  upgradeRequests     PlanUpgradeRequest[]
 }
 
 model PlanUpgradeRequest {
@@ -116,27 +116,27 @@ enum Role {
 }
 
 model ShortLink {
-  id                String         @id @default(cuid())
-  slug              String         @unique
-  title             String
-  welcomeMessage    String?        @default("Hello! How can I help you today?")
-  whatsappLink      String?
-  whatsappThreshold Int            @default(5)
-  leadCaptureFormId String?
-  leadCaptureMessage String?       @default("Please complete this form to continue:")
-  leadCaptureDelay  Int            @default(3)
-  whatsappOnFormSubmit Boolean     @default(false)
-  chatBackgroundImage String?
-  chatDesign          Json?         // { headerBackground, chatBackground, inputBackground, adminBubbleBackground, visitorBubbleBackground }
-  trackingPixels      Json?         // { facebook, googleAnalytics, tiktok, customScripts }
-  menuOptions         Json?         @default("[]")
-  assignmentRule    String         @default("MANUAL")
-  creator           User           @relation("CreatedLinks", fields: [creatorId], references: [id])
-  creatorId         String
-  assignedUsers     User[]         @relation("AssignedLinks")
-  conversations     Conversation[]
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  id                   String         @id @default(cuid())
+  slug                 String         @unique
+  title                String
+  welcomeMessage       String?        @default("Hello! How can I help you today?")
+  whatsappLink         String?
+  whatsappThreshold    Int            @default(5)
+  leadCaptureFormId    String?
+  leadCaptureMessage   String?        @default("Please complete this form to continue:")
+  leadCaptureDelay     Int            @default(3)
+  whatsappOnFormSubmit Boolean        @default(false)
+  chatBackgroundImage  String?
+  chatDesign           Json? // { headerBackground, chatBackground, inputBackground, adminBubbleBackground, visitorBubbleBackground }
+  trackingPixels       Json? // { facebook, googleAnalytics, tiktok, customScripts }
+  menuOptions          Json?          @default("[]")
+  assignmentRule       String         @default("MANUAL")
+  creator              User           @relation("CreatedLinks", fields: [creatorId], references: [id])
+  creatorId            String
+  assignedUsers        User[]         @relation("AssignedLinks")
+  conversations        Conversation[]
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
 
   @@index([creatorId], name: "idx_shortlink_creatorId")
   @@index([slug], name: "idx_shortlink_slug")
@@ -144,23 +144,23 @@ model ShortLink {
 }
 
 model Conversation {
-  id            String    @id @default(cuid())
-  visitorToken  String // A unique token for the visitor session
-  visitorName   String?
-  visitorPhone  String?
-  visitorEmail  String?
-  link          ShortLink @relation(fields: [linkId], references: [id])
-  linkId        String
-  messages      Message[]
-  waRedirected      Boolean   @default(false)
-  noReplyTriggered  Boolean   @default(false)
-  lastMessageAt     DateTime  @default(now())
-  createdAt         DateTime  @default(now())
-  assignedUserId    String?
-  assignedUser      User?     @relation("AssignedConversations", fields: [assignedUserId], references: [id])
-  isPinned          Boolean   @default(false)
-  isArchived        Boolean   @default(false)
-  pushSubscription  PushSubscription?
+  id               String            @id @default(cuid())
+  visitorToken     String // A unique token for the visitor session
+  visitorName      String?
+  visitorPhone     String?
+  visitorEmail     String?
+  link             ShortLink         @relation(fields: [linkId], references: [id])
+  linkId           String
+  messages         Message[]
+  waRedirected     Boolean           @default(false)
+  noReplyTriggered Boolean           @default(false)
+  lastMessageAt    DateTime          @default(now())
+  createdAt        DateTime          @default(now())
+  assignedUserId   String?
+  assignedUser     User?             @relation("AssignedConversations", fields: [assignedUserId], references: [id])
+  isPinned         Boolean           @default(false)
+  isArchived       Boolean           @default(false)
+  pushSubscription PushSubscription?
 
   @@index([linkId], name: "idx_conversation_linkId")
   @@index([lastMessageAt], name: "idx_conversation_lastMessageAt")
@@ -253,7 +253,7 @@ model CrmLead {
   phone      String
   email      String?
   industry   String?
-  source     String?       // 'AI Chat' | 'Smart Link' | 'Manual' | 'WhatsApp'
+  source     String? // 'AI Chat' | 'Smart Link' | 'Manual' | 'WhatsApp'
   status     CrmLeadStatus @default(NEW)
   value      Int           @default(0)
   notes      String?       @db.Text
@@ -263,19 +263,19 @@ model CrmLead {
   company           String?
   city              String?
   address           String?
-  lifecycleStage    String?       @default("Lead") // Lead, MQL, SQL, Customer, Evangelist
-  favoriteTopics    Json?         // e.g. ["AI Chatbots", "WhatsApp"]
-  preferredChannels Json?         // e.g. ["Email", "WhatsApp", "Phone"]
-  communicationSubs Json?         // { newsletter: boolean, marketing: boolean }
-  aiSummary         String?       @db.Text
-  aiInsights        Json?         // { sentiment, suggestedFollowUps: string[], conversationSummary: string }
-  associations      Json?         // { companies: [], deals: [], tickets: [], relationshipLabel: "Decision Maker" }
-  customFields      Json?         // { key: value }
-  activityTimeline  Json?         // Array of { id, type: 'NOTE'|'EMAIL'|'CALL'|'MEETING'|'TASK', title, description, date, status, dueDate }
+  lifecycleStage    String? @default("Lead") // Lead, MQL, SQL, Customer, Evangelist
+  favoriteTopics    Json? // e.g. ["AI Chatbots", "WhatsApp"]
+  preferredChannels Json? // e.g. ["Email", "WhatsApp", "Phone"]
+  communicationSubs Json? // { newsletter: boolean, marketing: boolean }
+  aiSummary         String? @db.Text
+  aiInsights        Json? // { sentiment, suggestedFollowUps: string[], conversationSummary: string }
+  associations      Json? // { companies: [], deals: [], tickets: [], relationshipLabel: "Decision Maker" }
+  customFields      Json? // { key: value }
+  activityTimeline  Json? // Array of { id, type: 'NOTE'|'EMAIL'|'CALL'|'MEETING'|'TASK', title, description, date, status, dueDate }
 
-  bookings   Booking[]
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  bookings  Booking[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@index([ownerId])
   @@index([status])
@@ -299,23 +299,23 @@ enum CrmLeadStatus {
 // ─────────────────────────────────────────────
 
 model Booking {
-  id          String        @id @default(cuid())
-  owner       User          @relation("OwnedBookings", fields: [ownerId], references: [id])
-  ownerId     String
-  lead        CrmLead?      @relation(fields: [leadId], references: [id])
-  leadId      String?
-  clientName  String
-  phone       String
-  email       String?       // Explicit email for manual bookings/automation mapping
-  service     String
-  industry    String?
-  date        DateTime
-  duration    Int           @default(60) // minutes
-  status      BookingStatus @default(PENDING)
-  source      String?       // 'AI Chat' | 'Smart Link' | 'Manual'
-  notes       String?       @db.Text
-  assignedTo  String?
-  formData           Json?         // industry-specific dynamic form data
+  id                 String        @id @default(cuid())
+  owner              User          @relation("OwnedBookings", fields: [ownerId], references: [id])
+  ownerId            String
+  lead               CrmLead?      @relation(fields: [leadId], references: [id])
+  leadId             String?
+  clientName         String
+  phone              String
+  email              String? // Explicit email for manual bookings/automation mapping
+  service            String
+  industry           String?
+  date               DateTime
+  duration           Int           @default(60) // minutes
+  status             BookingStatus @default(PENDING)
+  source             String? // 'AI Chat' | 'Smart Link' | 'Manual'
+  notes              String?       @db.Text
+  assignedTo         String?
+  formData           Json? // industry-specific dynamic form data
   calendarEventId    String?
   googleCalendarUrl  String?       @db.Text
   outlookCalendarUrl String?       @db.Text
@@ -345,20 +345,20 @@ enum BookingStatus {
 // ─────────────────────────────────────────────
 
 model AutomationRule {
-  id        String      @id @default(cuid())
-  owner     User        @relation("OwnedRules", fields: [ownerId], references: [id])
+  id        String          @id @default(cuid())
+  owner     User            @relation("OwnedRules", fields: [ownerId], references: [id])
   ownerId   String
   name      String
-  trigger   String      // TriggerType key
-  actions   Json        // ActionType[] (Legacy)
-  flow      Json?       // Tree-based logic flow structure
-  config    Json?       // { whatsappTemplate: string, emailSubject: string, etc. }
-  delay     Int?        @default(0) // delay in minutes
-  enabled   Boolean     @default(true)
-  runs      Int         @default(0)
+  trigger   String // TriggerType key
+  actions   Json // ActionType[] (Legacy)
+  flow      Json? // Tree-based logic flow structure
+  config    Json? // { whatsappTemplate: string, emailSubject: string, etc. }
+  delay     Int?            @default(0) // delay in minutes
+  enabled   Boolean         @default(true)
+  runs      Int             @default(0)
   lastRunAt DateTime?
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
   logs      AutomationLog[]
 
   @@index([ownerId])
@@ -367,16 +367,16 @@ model AutomationRule {
 }
 
 model AutomationLog {
-  id        String         @id @default(cuid())
-  rule      AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
-  ruleId    String
-  ownerId   String
-  trigger   String
-  action    String
-  status    LogStatus      @default(SUCCESS)
-  message   String?        @db.Text
-  details   Json?          // Data that was processed
-  executedAt DateTime      @default(now())
+  id         String         @id @default(cuid())
+  rule       AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  ruleId     String
+  ownerId    String
+  trigger    String
+  action     String
+  status     LogStatus      @default(SUCCESS)
+  message    String?        @db.Text
+  details    Json? // Data that was processed
+  executedAt DateTime       @default(now())
 
   @@index([ruleId])
   @@index([ownerId])
@@ -416,19 +416,19 @@ model ChatGroupMember {
 }
 
 model GroupMessage {
-  id          String        @id @default(cuid())
-  group       ChatGroup     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  id          String         @id @default(cuid())
+  group       ChatGroup      @relation(fields: [groupId], references: [id], onDelete: Cascade)
   groupId     String
-  sender      User          @relation("SentGroupMessages", fields: [senderId], references: [id])
+  sender      User           @relation("SentGroupMessages", fields: [senderId], references: [id])
   senderId    String
-  content     String        @db.Text
-  type        MessageType   @default(TEXT)
-  systemLink  Json?         // { type, id, label, path }
+  content     String         @db.Text
+  type        MessageType    @default(TEXT)
+  systemLink  Json? // { type, id, label, path }
   linkPreview Json?
   replyToId   String?
-  replyTo     GroupMessage? @relation("GroupReplyTo", fields: [replyToId], references: [id])
+  replyTo     GroupMessage?  @relation("GroupReplyTo", fields: [replyToId], references: [id])
   replies     GroupMessage[] @relation("GroupReplyTo")
-  createdAt   DateTime      @default(now())
+  createdAt   DateTime       @default(now())
 
   @@index([groupId])
   @@index([groupId, createdAt])
@@ -436,14 +436,14 @@ model GroupMessage {
 }
 
 model ScheduledTask {
-  id          String   @id @default(cuid())
-  ownerId     String
-  ruleId      String
-  action      String
-  data        Json
-  executeAt   DateTime
-  processed   Boolean  @default(false)
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  ownerId   String
+  ruleId    String
+  action    String
+  data      Json
+  executeAt DateTime
+  processed Boolean  @default(false)
+  createdAt DateTime @default(now())
 
   @@index([executeAt])
   @@index([processed])
@@ -463,7 +463,7 @@ model AdminModuleConfig {
   id             String   @id @default(cuid())
   admin          User     @relation("ModuleConfig", fields: [adminId], references: [id])
   adminId        String   @unique
-  enabledModules Json     // Module[]
+  enabledModules Json // Module[]
   updatedAt      DateTime @updatedAt
 
   @@index([adminId])
@@ -474,19 +474,19 @@ model AdminModuleConfig {
 // ─────────────────────────────────────────────
 
 model CustomForm {
-  id               String         @id @default(cuid())
-  title            String
-  description      String?        @db.Text
-  fields           Json           // Array of form fields { label, type, required, options }
-  integrationConfig Json?         // { syncToBookings: boolean, fieldMapping: object, automationId: string }
-  design           Json?          // { primaryColor: string, backgroundColor: string, textColor: string }
-  owner            User           @relation("OwnedForms", fields: [ownerId], references: [id])
-  ownerId          String
-  isActive         Boolean        @default(true)
-  addToCrm         Boolean        @default(false)
-  responses        FormResponse[]
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  id                String         @id @default(cuid())
+  title             String
+  description       String?        @db.Text
+  fields            Json // Array of form fields { label, type, required, options }
+  integrationConfig Json? // { syncToBookings: boolean, fieldMapping: object, automationId: string }
+  design            Json? // { primaryColor: string, backgroundColor: string, textColor: string }
+  owner             User           @relation("OwnedForms", fields: [ownerId], references: [id])
+  ownerId           String
+  isActive          Boolean        @default(true)
+  addToCrm          Boolean        @default(false)
+  responses         FormResponse[]
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
 
   @@index([ownerId])
   @@index([ownerId, isActive, createdAt], name: "idx_customform_owner_active_created")
@@ -496,13 +496,14 @@ model FormResponse {
   id        String     @id @default(cuid())
   form      CustomForm @relation(fields: [formId], references: [id], onDelete: Cascade)
   formId    String
-  data      Json       // Submitted form data
-  metadata  Json?      // IP, User Agent, etc.
+  data      Json // Submitted form data
+  metadata  Json? // IP, User Agent, etc.
   createdAt DateTime   @default(now())
 
   @@index([formId])
   @@index([formId, createdAt], name: "idx_formresponse_form_created")
 }
+
 model Notification {
   id        String   @id @default(cuid())
   ownerId   String
@@ -517,36 +518,36 @@ model Notification {
 }
 
 model EmailTemplate {
-  id        String   @id @default(cuid())
-  owner     User     @relation("OwnedEmailTemplates", fields: [ownerId], references: [id])
-  ownerId   String
-  name      String
-  subject   String
-  content   String   @db.Text    // Final HTML for sending
-  design    Json?                // Editor state (blocks, colors, etc)
-  sesSynced Boolean  @default(false)
+  id              String   @id @default(cuid())
+  owner           User     @relation("OwnedEmailTemplates", fields: [ownerId], references: [id])
+  ownerId         String
+  name            String
+  subject         String
+  content         String   @db.Text // Final HTML for sending
+  design          Json? // Editor state (blocks, colors, etc)
+  sesSynced       Boolean  @default(false)
   sesTemplateName String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@index([ownerId])
   @@index([sesSynced])
 }
 
 model BroadcastCampaign {
-  id           String           @id @default(cuid())
-  name         String
-  targetFilter Json             // filters like tags, leadStatus, country
-  content      String           @db.Text
-  mediaUrl     String?          @db.Text
-  scheduledAt  DateTime?
-  sentAt       DateTime?
-  status       CampaignStatus   @default(PENDING)
-  creator      User             @relation("CreatedCampaigns", fields: [creatorId], references: [id])
-  creatorId    String
+  id            String         @id @default(cuid())
+  name          String
+  targetFilter  Json // filters like tags, leadStatus, country
+  content       String         @db.Text
+  mediaUrl      String?        @db.Text
+  scheduledAt   DateTime?
+  sentAt        DateTime?
+  status        CampaignStatus @default(PENDING)
+  creator       User           @relation("CreatedCampaigns", fields: [creatorId], references: [id])
+  creatorId     String
   recipientsLog Json?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   @@index([creatorId])
   @@index([status])

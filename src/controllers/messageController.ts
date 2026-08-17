@@ -5,6 +5,16 @@ import ogs from 'open-graph-scraper';
 import { prisma } from '../lib/prisma';
 import { broadcastMessage, broadcastMarkRead, broadcastConversationUpdate, getFormattedConversation } from '../utils/sse';
 import { detectSpamAndIntent, translateMessage, detectLanguage, suggestReply, summarizeChat } from '../utils/nvidia';
+import webpush from 'web-push';
+
+if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+    const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:support@madmarketer.com';
+    webpush.setVapidDetails(
+        vapidSubject,
+        process.env.VAPID_PUBLIC_KEY,
+        process.env.VAPID_PRIVATE_KEY
+    );
+}
 
 const extractUrl = (text: string) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -90,8 +100,29 @@ export const sendMessage = async (req: Request, res: Response) => {
                 lastMessageAt: new Date(),
                 noReplyTriggered: false
             },
-            include: { link: true }
+            include: { link: true, pushSubscription: true }
         });
+
+        // 0. Push Notification for Visitor if Admin replies
+        if (isFromAdmin && updatedConv.pushSubscription) {
+            try {
+                const pushSub = {
+                    endpoint: updatedConv.pushSubscription.endpoint,
+                    keys: {
+                        auth: updatedConv.pushSubscription.auth,
+                        p256dh: updatedConv.pushSubscription.p256dh
+                    }
+                };
+                const payload = JSON.stringify({
+                    title: 'New Message from Admin',
+                    body: content,
+                    url: `/chat/${updatedConv.link.slug}?token=${updatedConv.visitorToken}`
+                });
+                await webpush.sendNotification(pushSub, payload);
+            } catch (pushErr) {
+                console.error('Push notification failed for conversation', conversationId, pushErr);
+            }
+        }
 
         // 1. Welcome Chatbot Menu Options Parsing (Visitor only)
         if (!isFromAdmin && updatedConv.link.menuOptions) {
