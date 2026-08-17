@@ -86,14 +86,13 @@ export const initPublicChat = async (req: Request, res: Response) => {
                 }
             }).catch(err => console.error('Error broadcasting conversation update on init:', err));
         }
-
-        const isOnline = isAgentOnline(link.id, link.creatorId);
+        const isOnline = true;
 
         res.json({
             conversationId: conversation.id,
             welcomeMessage: link.welcomeMessage,
             title: link.title,
-            adminName: link.creator.name || link.creator.username,
+            adminName: link.title,
             adminLogo: link.creator.logoUrl,
             whatsappLink: link.whatsappLink,
             whatsappThreshold: link.whatsappThreshold,

@@ -57,9 +57,29 @@ export const getSubscriptionStatus = async (req: AuthRequest, res: Response) => 
             subscription.status = 'OVERDUE';
         }
 
+        let basePrice = 0;
+        let linkPrice = 0;
+        let linksCount = 0;
+        
+        if (user?.planId) {
+            const plan = await prisma.plan.findUnique({ where: { id: user.planId } });
+            if (plan) {
+                basePrice = user.billingCycle === 'YEARLY' ? plan.yearlyPrice : plan.monthlyPrice;
+                linkPrice = user.billingCycle === 'YEARLY' ? plan.pricePerLinkYearly : plan.pricePerLinkMonthly;
+            }
+            linksCount = await prisma.shortLink.count({ where: { creatorId: userId } });
+        }
+
         res.json({
             hasSubscription: true,
             billingCycle: user?.billingCycle,
+            breakdown: {
+                basePrice,
+                linkPrice,
+                linksCount,
+                totalLinksPrice: linkPrice * linksCount,
+                total: user?.subscriptionAmount || 0
+            },
             subscription: {
                 id: subscription.id,
                 startDate: subscription.startDate,

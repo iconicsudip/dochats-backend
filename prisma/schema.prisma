@@ -70,6 +70,8 @@ model Plan {
   order              Int                  @default(0)
   subUsersLimit      Int                  @default(3)
   linksLimit         Int                  @default(5)
+  pricePerLinkMonthly Int                 @default(0)
+  pricePerLinkYearly  Int                 @default(0)
   leadCaptureEnabled Boolean              @default(false)
   isPublic           Boolean              @default(true)
   description        String?

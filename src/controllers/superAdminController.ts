@@ -192,7 +192,11 @@ export const updateAdmin = async (req: AuthRequest, res: Response) => {
                     if (subUsersLimit === undefined) updateData.subUsersLimit = plan.subUsersLimit;
                     if (linksLimit === undefined) updateData.linksLimit = plan.linksLimit;
                     if (subscriptionAmount === undefined) {
-                        updateData.subscriptionAmount = currentCycle === 'YEARLY' ? plan.yearlyPrice : plan.monthlyPrice;
+                        const basePrice = currentCycle === 'YEARLY' ? plan.yearlyPrice : plan.monthlyPrice;
+                        const linkPrice = currentCycle === 'YEARLY' ? plan.pricePerLinkYearly : plan.pricePerLinkMonthly;
+                        const currentUser = await prisma.user.findUnique({ where: { id }, include: { _count: { select: { links: true } } } });
+                        const linksCount = currentUser?._count?.links || 0;
+                        updateData.subscriptionAmount = basePrice + (linksCount * linkPrice);
                     }
                 }
             } else {
@@ -297,7 +301,7 @@ export const createPlan = async (req: AuthRequest, res: Response) => {
             return res.status(403).json({ error: 'Forbidden' });
         }
 
-        const { name, monthlyPrice, yearlyPrice, order, subUsersLimit, linksLimit, leadCaptureEnabled, isPublic, description, enabledModules } = req.body;
+        const { name, monthlyPrice, yearlyPrice, order, subUsersLimit, linksLimit, pricePerLinkMonthly, pricePerLinkYearly, leadCaptureEnabled, isPublic, description, enabledModules } = req.body;
         if (!name || monthlyPrice === undefined || yearlyPrice === undefined) {
             return res.status(400).json({ error: 'Name, monthly price and yearly price are required' });
         }
@@ -310,6 +314,8 @@ export const createPlan = async (req: AuthRequest, res: Response) => {
                 order: Number(order) || 0,
                 subUsersLimit: Number(subUsersLimit) || 3,
                 linksLimit: Number(linksLimit) || 5,
+                pricePerLinkMonthly: Number(pricePerLinkMonthly) || 0,
+                pricePerLinkYearly: Number(pricePerLinkYearly) || 0,
                 leadCaptureEnabled: !!leadCaptureEnabled,
                 isPublic: isPublic !== undefined ? !!isPublic : true,
                 description,
@@ -331,7 +337,7 @@ export const updatePlan = async (req: AuthRequest, res: Response) => {
         }
 
         const { id } = req.params;
-        const { name, monthlyPrice, yearlyPrice, order, subUsersLimit, linksLimit, leadCaptureEnabled, isPublic, description, enabledModules } = req.body;
+        const { name, monthlyPrice, yearlyPrice, order, subUsersLimit, linksLimit, pricePerLinkMonthly, pricePerLinkYearly, leadCaptureEnabled, isPublic, description, enabledModules } = req.body;
 
         const plan = await prisma.plan.update({
             where: { id },
@@ -342,6 +348,8 @@ export const updatePlan = async (req: AuthRequest, res: Response) => {
                 order: order !== undefined ? Number(order) : undefined,
                 subUsersLimit: subUsersLimit !== undefined ? Number(subUsersLimit) : undefined,
                 linksLimit: linksLimit !== undefined ? Number(linksLimit) : undefined,
+                pricePerLinkMonthly: pricePerLinkMonthly !== undefined ? Number(pricePerLinkMonthly) : undefined,
+                pricePerLinkYearly: pricePerLinkYearly !== undefined ? Number(pricePerLinkYearly) : undefined,
                 leadCaptureEnabled: leadCaptureEnabled !== undefined ? !!leadCaptureEnabled : undefined,
                 isPublic: isPublic !== undefined ? !!isPublic : undefined,
                 description,
@@ -426,7 +434,12 @@ export const handleUpgradeRequest = async (req: AuthRequest, res: Response) => {
 
         if (status === 'APPROVED') {
             if (request.planId && request.plan) {
-                const amount = request.billingCycle === 'YEARLY' ? request.plan.yearlyPrice : request.plan.monthlyPrice;
+                const basePrice = request.billingCycle === 'YEARLY' ? request.plan.yearlyPrice : request.plan.monthlyPrice;
+                const linkPrice = request.billingCycle === 'YEARLY' ? request.plan.pricePerLinkYearly : request.plan.pricePerLinkMonthly;
+                const user = await prisma.user.findUnique({ where: { id: request.userId }, include: { _count: { select: { links: true } } } });
+                const linksCount = user?._count?.links || 0;
+                const amount = basePrice + (linksCount * linkPrice);
+
                 await prisma.user.update({
                     where: { id: request.userId },
                     data: {

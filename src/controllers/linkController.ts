@@ -55,19 +55,11 @@ export const createLink = async (req: AuthRequest, res: Response) => {
 
         const currentUser = await prisma.user.findUnique({
             where: { id: req.user!.userId },
-            include: { links: true }
+            include: { links: true, plan: true }
         });
 
         if (!currentUser) {
             return res.status(404).json({ error: 'User not found' });
-        }
-
-        // Check links limit
-        const linksLimit = currentUser.linksLimit || 5;
-        if (currentUser.links.length >= linksLimit) {
-            return res.status(400).json({
-                error: `You have reached your links limit (${linksLimit}). Please upgrade your plan.`
-            });
         }
 
         const slug = await generateUniqueSlug();
@@ -88,6 +80,20 @@ export const createLink = async (req: AuthRequest, res: Response) => {
                 creatorId: req.user!.userId
             }
         });
+
+        if (currentUser.plan) {
+            const pricePerLink = currentUser.billingCycle === 'YEARLY' ? currentUser.plan.pricePerLinkYearly : currentUser.plan.pricePerLinkMonthly;
+            if (pricePerLink > 0) {
+                const totalLinks = currentUser.links.length + 1;
+                const basePrice = currentUser.billingCycle === 'YEARLY' ? currentUser.plan.yearlyPrice : currentUser.plan.monthlyPrice;
+                const newAmount = basePrice + (totalLinks * pricePerLink);
+                await prisma.user.update({
+                    where: { id: currentUser.id },
+                    data: { subscriptionAmount: newAmount }
+                });
+            }
+        }
+
         res.status(201).json(link);
 
     } catch (e) {
@@ -131,12 +137,42 @@ export const updateLink = async (req: AuthRequest, res: Response) => {
 export const deleteLink = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
-        const link = await prisma.shortLink.findUnique({ where: { id } });
+        const link = await prisma.shortLink.findUnique({ 
+            where: { id },
+            include: { creator: { include: { plan: true } } }
+        });
         if (!link || link.creatorId !== req.user!.userId) {
             return res.status(401).json({ error: 'Unauthorized' });
         }
 
+        const conversations = await prisma.conversation.findMany({ where: { linkId: id } });
+        const conversationIds = conversations.map(c => c.id);
+        
+        if (conversationIds.length > 0) {
+            await prisma.message.deleteMany({
+                where: { conversationId: { in: conversationIds } }
+            });
+            await prisma.conversation.deleteMany({
+                where: { linkId: id }
+            });
+        }
+
         await prisma.shortLink.delete({ where: { id } });
+
+        const currentUser = link.creator;
+        if (currentUser.plan) {
+            const pricePerLink = currentUser.billingCycle === 'YEARLY' ? currentUser.plan.pricePerLinkYearly : currentUser.plan.pricePerLinkMonthly;
+            if (pricePerLink > 0) {
+                const remainingLinksCount = await prisma.shortLink.count({ where: { creatorId: currentUser.id } });
+                const basePrice = currentUser.billingCycle === 'YEARLY' ? currentUser.plan.yearlyPrice : currentUser.plan.monthlyPrice;
+                const newAmount = basePrice + (remainingLinksCount * pricePerLink);
+                await prisma.user.update({
+                    where: { id: currentUser.id },
+                    data: { subscriptionAmount: newAmount }
+                });
+            }
+        }
+
         res.json({ message: 'Link deleted' });
     } catch (e) {
         console.error('deleteLink error:', e);
