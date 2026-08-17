@@ -100,6 +100,7 @@ export const initPublicChat = async (req: Request, res: Response) => {
             visitorPhone: conversation.visitorPhone,
             visitorEmail: conversation.visitorEmail,
             leadCaptureFormId: link.leadCaptureFormId,
+            leadCaptureMessage: link.leadCaptureMessage,
             leadCaptureDelay: link.leadCaptureDelay,
             whatsappOnFormSubmit: link.whatsappOnFormSubmit,
             chatBackgroundImage: link.chatBackgroundImage,
