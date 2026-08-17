@@ -3,6 +3,16 @@ import { prisma } from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { encryptMessage } from '../lib/encryption';
 import { broadcastMessage, getFormattedConversation, broadcastConversationUpdate } from '../utils/sse';
+import webpush from 'web-push';
+
+if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+    const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:support@madmarketer.com';
+    webpush.setVapidDetails(
+        vapidSubject,
+        process.env.VAPID_PUBLIC_KEY,
+        process.env.VAPID_PRIVATE_KEY
+    );
+}
 
 const getTargetConversations = async (ownerId: string, filters: any) => {
     const { linkId, leadStatus } = filters;
@@ -13,6 +23,10 @@ const getTargetConversations = async (ownerId: string, filters: any) => {
     
     if (linkId && linkId !== 'all') {
         whereClause.linkId = linkId;
+    }
+    
+    if (filters.pushSubscribersOnly) {
+        whereClause.pushSubscription = { isNot: null };
     }
     
     if (leadStatus && leadStatus !== 'all') {
@@ -29,7 +43,7 @@ const getTargetConversations = async (ownerId: string, filters: any) => {
     
     return prisma.conversation.findMany({
         where: whereClause,
-        include: { link: true }
+        include: { link: true, pushSubscription: true }
     });
 };
 
@@ -128,6 +142,26 @@ export const sendCampaign = async (req: AuthRequest, res: Response) => {
                         const formatted = await getFormattedConversation(conv.id);
                         if (formatted) {
                             broadcastConversationUpdate(formatted);
+                        }
+
+                        if (conv.pushSubscription) {
+                            try {
+                                const pushSubscription = {
+                                    endpoint: conv.pushSubscription.endpoint,
+                                    keys: {
+                                        auth: conv.pushSubscription.auth,
+                                        p256dh: conv.pushSubscription.p256dh
+                                    }
+                                };
+                                const payload = JSON.stringify({
+                                    title: 'New Message',
+                                    body: campaign.content,
+                                    url: `/chat/${conv.link.slug}?token=${conv.visitorToken}`
+                                });
+                                await webpush.sendNotification(pushSubscription, payload);
+                            } catch (pushErr) {
+                                console.error('Push notification failed for conversation', conv.id, pushErr);
+                            }
                         }
 
                         log.push({

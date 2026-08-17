@@ -123,6 +123,7 @@ model ShortLink {
   whatsappLink      String?
   whatsappThreshold Int            @default(5)
   leadCaptureFormId String?
+  leadCaptureMessage String?       @default("Please complete this form to continue:")
   leadCaptureDelay  Int            @default(3)
   whatsappOnFormSubmit Boolean     @default(false)
   chatBackgroundImage String?
@@ -159,6 +160,7 @@ model Conversation {
   assignedUser      User?     @relation("AssignedConversations", fields: [assignedUserId], references: [id])
   isPinned          Boolean   @default(false)
   isArchived        Boolean   @default(false)
+  pushSubscription  PushSubscription?
 
   @@index([linkId], name: "idx_conversation_linkId")
   @@index([lastMessageAt], name: "idx_conversation_lastMessageAt")
@@ -556,3 +558,13 @@ enum CampaignStatus {
   FAILED
 }
 
+model PushSubscription {
+  id             String       @id @default(cuid())
+  endpoint       String
+  auth           String
+  p256dh         String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId String       @unique
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
