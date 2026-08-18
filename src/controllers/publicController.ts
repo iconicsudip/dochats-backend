@@ -105,6 +105,7 @@ export const initPublicChat = async (req: Request, res: Response) => {
             whatsappOnFormSubmit: link.whatsappOnFormSubmit,
             chatBackgroundImage: link.chatBackgroundImage,
             chatDesign: link.chatDesign,
+            trackingPixels: link.trackingPixels,
             menuOptions: link.menuOptions || [],
             isOnline
         });
